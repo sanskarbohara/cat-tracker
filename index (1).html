@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grind Log — CAT 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0f;
+    --surface:#15151c;
+    --surface-2:#1c1c26;
+    --border:#26262f;
+    --accent:#f06030;
+    --accent-dim:rgba(240,96,48,0.16);
+    --success:#7cc576;
+    --success-dim:rgba(124,197,118,0.16);
+    --warn:#e8b84b;
+    --warn-dim:rgba(232,184,75,0.14);
+    --text:#eee9e4;
+    --text-dim:#8b8890;
+    --text-faint:#54525c;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{-webkit-tap-highlight-color:transparent;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+  ::selection{background:var(--accent-dim);}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .app{max-width:720px; margin:0 auto; padding:0 18px;}
+  .page.hidden{display:none;}
+
+  /* ---------- Tab bar ---------- */
+  .tabbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; gap:6px;
+    background:var(--bg);
+    padding:14px 0 10px;
+  }
+  .tab-btn{
+    flex:1; background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
+    padding:10px 0; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+    font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:0.02em;
+  }
+  .tab-btn.active{background:var(--accent-dim); color:var(--accent); border-color:var(--accent);}
+
+  /* ---------- Segmented control ---------- */
+  .seg-control{display:flex; gap:6px;}
+  .seg-btn{
+    flex:1; background:var(--surface-2); border:1px solid var(--border); color:var(--text-dim);
+    padding:9px 0; border-radius:8px; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .seg-btn.active{background:var(--accent); color:#0a0a0f; border-color:var(--accent); font-weight:700;}
+  .field-row{display:flex; gap:10px;}
+  .field-row .field{flex:1;}
+  .field input[type="text"]{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:'Inter',sans-serif;
+  }
+
+  /* ---------- Section trend cards ---------- */
+  .trend-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .trend-card{background:var(--surface-2); border-radius:10px; padding:12px 14px;}
+  .trend-card .sec-name{font-size:12px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;}
+  .trend-card .sec-stats{display:flex; justify-content:space-between; align-items:flex-end;}
+  .trend-card .sec-latest{font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700;}
+  .trend-card .sec-sub{font-size:10px; color:var(--text-faint); margin-top:2px;}
+  .trend-card svg{display:block;}
+  .trend-card.empty .sec-latest{color:var(--text-faint); font-size:12px; font-weight:500; font-family:'Inter',sans-serif;}
+
+  /* ---------- Filter chips ---------- */
+  .filter-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;}
+  .chip{background:var(--surface-2); border:1px solid var(--border); color:var(--text-dim); padding:6px 12px; border-radius:16px; font-size:12px; cursor:pointer;}
+  .chip.active{background:var(--accent-dim); color:var(--accent); border-color:var(--accent);}
+
+  /* ---------- Test history table ---------- */
+  .table-wrap{overflow-x:auto;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px; min-width:520px;}
+  thead th{text-align:left; color:var(--text-faint); font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; padding:0 8px 8px;}
+  tbody td{padding:9px 8px; border-top:1px solid var(--border);}
+  tbody tr:hover{background:var(--surface-2);}
+  td.score-cell, td.pct-cell{font-family:'JetBrains Mono',monospace; font-weight:600;}
+  td.notes-cell{color:var(--text-dim); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .del-btn{background:transparent; border:none; color:var(--text-faint); cursor:pointer; font-size:15px; padding:2px 6px;}
+  .del-btn:hover{color:#e87a5a;}
+  .sec-tag{font-size:10px; padding:2px 7px; border-radius:10px; font-weight:700; text-transform:uppercase;}
+  .sec-tag.VARC{background:rgba(124,197,118,0.16); color:var(--success);}
+  .sec-tag.Quant{background:rgba(240,96,48,0.16); color:var(--accent);}
+  .sec-tag.LRDI{background:rgba(232,184,75,0.14); color:var(--warn);}
+  .sec-tag.Overall{background:rgba(139,136,144,0.18); color:var(--text-dim);}
+
+  .select-input{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:'Inter',sans-serif; appearance:none;
+  }
+  .sec-block{border-top:1px solid var(--border); padding-top:12px; margin-top:12px;}
+  .sec-block:first-child{border-top:none; padding-top:0; margin-top:0;}
+  .sec-block-title{font-size:12px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;}
+  .detail-toggle{
+    background:none; border:none; color:var(--text-dim); font-size:12px; cursor:pointer; padding:2px 0 8px;
+    text-decoration:underline; text-underline-offset:2px; font-family:'Inter',sans-serif;
+  }
+  .detail-toggle:hover{color:var(--accent);}
+  .detail-row.hidden{display:none;}
+  .pct-hit{color:var(--success);}
+  .pct-miss{color:#e87a5a;}
+
+  /* ---------- Hero ---------- */
+  .hero{padding:28px 0 20px; text-align:center;}
+  .hero-top{display:flex; justify-content:space-between; align-items:flex-start; text-align:left; margin-bottom:22px;}
+  .date-today{font-size:13px; color:var(--text-dim); letter-spacing:0.02em;}
+  .date-today .big{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:700; color:var(--text); margin-top:2px;}
+  .countdown{text-align:right;}
+  .countdown .num{display:block; font-family:'JetBrains Mono',monospace; font-size:30px; font-weight:700; color:var(--accent); line-height:1;}
+  .countdown .label{font-size:11px; color:var(--text-dim); letter-spacing:0.04em; text-transform:uppercase;}
+
+  .timer-ring{
+    position:relative;
+    width:230px; height:230px;
+    margin:0 auto;
+    border-radius:50%;
+    background:var(--surface);
+    border:none;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform 0.15s ease;
+  }
+  .timer-ring:active{transform:scale(0.98);}
+  .timer-ring svg{position:absolute; top:0; left:0; width:100%; height:100%; transform:rotate(-90deg);}
+  .timer-ring circle{fill:none; stroke-width:8;}
+  .ring-track{stroke:var(--border);}
+  .ring-progress{stroke:var(--accent); stroke-linecap:round; transition:stroke-dashoffset 0.4s ease, stroke 0.4s ease;}
+  .ring-progress.met{stroke:var(--success);}
+  .timer-center{position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:6px;}
+  #timerDigits{font-family:'JetBrains Mono',monospace; font-size:32px; font-weight:700; letter-spacing:0.01em;}
+  #timerState{font-size:12px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em;}
+  .timer-ring.running #timerState{color:var(--accent);}
+  @media (prefers-reduced-motion: no-preference){
+    .timer-ring.running{animation:pulse 2.4s ease-in-out infinite;}
+  }
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--accent-dim);} 50%{box-shadow:0 0 0 14px transparent;}}
+
+  .today-summary{margin-top:20px; font-size:14px; color:var(--text-dim);}
+  .today-summary .val{color:var(--text); font-weight:600;}
+
+  /* ---------- Sections ---------- */
+  section{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:14px;}
+  section h2{font-size:14px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim); margin-bottom:12px; font-weight:600;}
+
+  #sessionList{list-style:none; display:flex; flex-direction:column; gap:8px;}
+  #sessionList li{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;}
+  #sessionList li .times{color:var(--text-dim);}
+  #sessionList li .dur{font-family:'JetBrains Mono',monospace; font-weight:600;}
+  .empty-note{color:var(--text-faint); font-size:13px; padding:6px 2px;}
+
+  .stats-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .stat-card{background:var(--surface-2); border-radius:10px; padding:12px 14px;}
+  .stat-card .label{font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em;}
+  .stat-card .value{font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:700; margin-top:4px;}
+
+  /* ---------- Calendar ---------- */
+  .cal-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .cal-header button{background:var(--surface-2); border:1px solid var(--border); color:var(--text); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:15px;}
+  .cal-header .month-label{font-weight:700; font-size:14px; font-family:'Plus Jakarta Sans',sans-serif;}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:5px;}
+  .cal-dow{text-align:center; font-size:10px; color:var(--text-faint); padding-bottom:4px; text-transform:uppercase;}
+  .cal-cell{aspect-ratio:1; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; background:var(--surface-2); border:1px solid transparent; font-size:12px; position:relative;}
+  .cal-cell.blank{visibility:hidden; cursor:default;}
+  .cal-cell .d{font-weight:600;}
+  .cal-cell .dot{width:5px; height:5px; border-radius:50%; margin-top:3px; background:transparent;}
+  .cal-cell.has-none .dot{background:var(--text-faint); opacity:0.4;}
+  .cal-cell.has-low .dot{background:var(--warn);}
+  .cal-cell.has-met .dot{background:var(--success);}
+  .cal-cell.today{border-color:var(--accent);}
+  .cal-cell.selected{background:var(--accent-dim); border-color:var(--accent);}
+  .cal-cell:hover{background:var(--border);}
+
+  .day-detail{margin-top:14px; padding-top:14px; border-top:1px solid var(--border);}
+  .day-detail.hidden{display:none;}
+  .day-detail h3{font-size:14px; margin-bottom:8px;}
+  .day-detail .dd-total{font-size:13px; color:var(--text-dim); margin-bottom:8px;}
+  .day-detail .dd-total b{color:var(--text);}
+
+  /* ---------- Settings ---------- */
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px;}
+  .field input[type="number"], .field input[type="date"]{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:'JetBrains Mono',monospace;
+  }
+  .suggest-pill{display:inline-flex; align-items:center; gap:8px; background:var(--success-dim); color:var(--success); font-size:12px; padding:7px 12px; border-radius:20px; margin-top:8px;}
+  .suggest-pill button{background:var(--success); color:#0a0a0f; border:none; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer;}
+  .btn-row{display:flex; gap:10px; margin-top:6px; flex-wrap:wrap;}
+  .btn{background:var(--surface-2); border:1px solid var(--border); color:var(--text); padding:9px 14px; border-radius:8px; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.danger{color:#e87a5a;}
+  .btn.primary{background:var(--accent); color:#0a0a0f; border-color:var(--accent); font-weight:700;}
+  input[type="file"]{display:none;}
+  footer{text-align:center; font-size:11px; color:var(--text-faint); padding:20px 0 0;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <nav class="tabbar">
+    <button class="tab-btn active" id="tabStudyBtn" data-page="study">Study</button>
+    <button class="tab-btn" id="tabTestsBtn" data-page="tests">Tests</button>
+  </nav>
+
+  <div id="page-study" class="page">
+
+  <header class="hero">
+    <div class="hero-top">
+      <div class="date-today">Today<span class="big" id="todayLabel">—</span></div>
+      <div class="countdown"><span class="num" id="daysLeft">—</span><span class="label">days to CAT</span></div>
+    </div>
+
+    <button class="timer-ring" id="timerBtn" aria-label="Start or pause study timer">
+      <svg viewBox="0 0 230 230">
+        <circle class="ring-track" cx="115" cy="115" r="103"></circle>
+        <circle class="ring-progress" id="ringProgress" cx="115" cy="115" r="103"></circle>
+      </svg>
+      <div class="timer-center">
+        <div id="timerDigits" class="mono">00:00:00</div>
+        <div id="timerState">Tap to start</div>
+      </div>
+    </button>
+
+    <div class="today-summary">
+      Today: <span class="val" id="todayTotal">0h 0m</span> / <span class="val" id="todayTargetLabel">0h 0m</span> target
+    </div>
+  </header>
+
+  <section>
+    <h2>Today's sessions</h2>
+    <ul id="sessionList"></ul>
+  </section>
+
+  <section>
+    <h2>Stats</h2>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Current streak</div><div class="value" id="statStreak">0 days</div></div>
+      <div class="stat-card"><div class="label">Longest sitting today</div><div class="value" id="statLongestToday">0m</div></div>
+      <div class="stat-card"><div class="label">Longest sitting ever</div><div class="value" id="statLongestEver">0m</div></div>
+      <div class="stat-card"><div class="label">7-day avg / day</div><div class="value" id="statAvg7">0h 0m</div></div>
+      <div class="stat-card"><div class="label">Total logged</div><div class="value" id="statTotal">0h 0m</div></div>
+      <div class="stat-card"><div class="label">Days tracked</div><div class="value" id="statDaysTracked">0</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Calendar</h2>
+    <div class="cal-header">
+      <button id="prevMonth" aria-label="Previous month">‹</button>
+      <div class="month-label" id="monthLabel">—</div>
+      <button id="nextMonth" aria-label="Next month">›</button>
+    </div>
+    <div class="cal-grid" id="calDow"></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="day-detail hidden" id="dayDetail"></div>
+  </section>
+
+  <section>
+    <h2>Target</h2>
+    <div class="field">
+      <label for="targetInput">Daily target (hours)</label>
+      <input type="number" inputmode="decimal" id="targetInput" min="0.25" max="16" step="0.25">
+    </div>
+    <div id="stretchSuggestion"></div>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <div class="field">
+      <label for="catDateInput">CAT exam date</label>
+      <input type="date" id="catDateInput">
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="exportBtn">Export backup (.json)</button>
+      <button class="btn" id="importBtn">Import backup</button>
+      <input type="file" id="importFile" accept="application/json">
+      <button class="btn danger" id="resetBtn">Reset all data</button>
+    </div>
+  </section>
+
+  </div><!-- /page-study -->
+
+  <div id="page-tests" class="page hidden">
+
+  <section>
+    <h2>Log a test</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="testDate">Date</label>
+        <input type="date" id="testDate">
+      </div>
+      <div class="field">
+        <label for="testSeries">Series</label>
+        <select id="testSeries" class="select-input">
+          <option>iQuanta</option>
+          <option>TIME AIMCAT</option>
+          <option>IMS SimCAT</option>
+          <option>Career Launcher</option>
+          <option>Cracku</option>
+          <option>CATKing</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <div class="seg-control" id="testTypeSeg">
+        <button class="seg-btn active" data-type="sectional">Sectional</button>
+        <button class="seg-btn" data-type="mock">Full Mock</button>
+      </div>
+    </div>
+    <div class="field" id="sectionPickerWrap">
+      <label>Section</label>
+      <div class="seg-control" id="sectionSeg">
+        <button class="seg-btn active" data-sec="VARC">VARC</button>
+        <button class="seg-btn" data-sec="Quant">Quant</button>
+        <button class="seg-btn" data-sec="LRDI">LRDI</button>
+      </div>
+    </div>
+
+    <div id="sectionBlocks"></div>
+
+    <div class="field">
+      <label>Where did the marks go? (optional)</label>
+      <div class="filter-chips" id="errorTagChips">
+        <button class="chip active" data-tag="">None yet</button>
+        <button class="chip" data-tag="Concept gap">Concept gap</button>
+        <button class="chip" data-tag="Silly mistake">Silly mistake</button>
+        <button class="chip" data-tag="Time pressure">Time pressure</button>
+        <button class="chip" data-tag="Wrong selection">Wrong selection</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="testNotes">Notes (optional)</label>
+      <input type="text" id="testNotes" placeholder="e.g. wasted 10 min on one tough DI set">
+    </div>
+    <button class="btn primary" id="addTestBtn">Add entry</button>
+  </section>
+
+  <section>
+    <h2>Section trends</h2>
+    <div class="empty-note" id="testCountLine" style="margin-bottom:10px;"></div>
+    <div class="trend-grid" id="trendGrid"></div>
+  </section>
+
+  <section>
+    <h2>Target percentile</h2>
+    <div class="field-row">
+      <div class="field"><label for="tgtVARC">VARC</label><input type="number" inputmode="decimal" id="tgtVARC" min="0" max="100" step="0.1"></div>
+      <div class="field"><label for="tgtQuant">Quant</label><input type="number" inputmode="decimal" id="tgtQuant" min="0" max="100" step="0.1"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="tgtLRDI">LRDI</label><input type="number" inputmode="decimal" id="tgtLRDI" min="0" max="100" step="0.1"></div>
+      <div class="field"><label for="tgtOverall">Overall</label><input type="number" inputmode="decimal" id="tgtOverall" min="0" max="100" step="0.1"></div>
+    </div>
+    <div class="empty-note">Set these once you know your target IIMs' sectional cutoffs — trend cards will flag whether your latest attempt clears each one.</div>
+  </section>
+
+  <section>
+    <h2>History</h2>
+    <div class="filter-chips" id="historyFilters">
+      <button class="chip active" data-filter="All">All</button>
+      <button class="chip" data-filter="VARC">VARC</button>
+      <button class="chip" data-filter="Quant">Quant</button>
+      <button class="chip" data-filter="LRDI">LRDI</button>
+      <button class="chip" data-filter="Overall">Overall</button>
+    </div>
+    <div class="table-wrap">
+      <table id="testTable">
+        <thead><tr><th>Date</th><th>Section</th><th>Score</th><th>%ile</th><th>Acc%</th><th>Time</th><th>Notes</th><th></th></tr></thead>
+        <tbody id="testTableBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-note hidden" id="testHistoryEmpty">No tests logged yet. Add your first sectional or mock above.</div>
+  </section>
+
+  </div><!-- /page-tests -->
+
+  <footer>Data lives only in this browser. Export a backup regularly.</footer>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'grindLogData';
+  const DOW = ['S','M','T','W','T','F','S'];
+
+  function normalizeData(raw){
+    if(!raw || typeof raw !== 'object'){
+      raw = {};
+    }
+    raw.settings = (raw.settings && typeof raw.settings==='object') ? raw.settings : {};
+    if(!raw.settings.catDate) raw.settings.catDate = '2026-11-29';
+    if(!raw.settings.dailyTargetMinutes || isNaN(raw.settings.dailyTargetMinutes)) raw.settings.dailyTargetMinutes = 240;
+    raw.settings.targetPercentile = (raw.settings.targetPercentile && typeof raw.settings.targetPercentile==='object')
+      ? raw.settings.targetPercentile : {VARC:null, Quant:null, LRDI:null, Overall:null};
+    ['VARC','Quant','LRDI','Overall'].forEach(sec=>{
+      if(raw.settings.targetPercentile[sec]===undefined) raw.settings.targetPercentile[sec] = null;
+    });
+    raw.days = (raw.days && typeof raw.days==='object') ? raw.days : {};
+    Object.keys(raw.days).forEach(k=>{
+      if(!raw.days[k] || !Array.isArray(raw.days[k].sessions)) raw.days[k] = {sessions:[], targetMinutesAtStart: raw.settings.dailyTargetMinutes};
+    });
+    if(typeof raw.longestEverSec !== 'number' || isNaN(raw.longestEverSec)) raw.longestEverSec = 0;
+    raw.tests = Array.isArray(raw.tests)
+      ? raw.tests
+          .filter(t => t && typeof t==='object' && t.section && !isNaN(parseFloat(t.score)))
+          .map(t => ({
+            id: t.id || ('T'+Math.random().toString(36).slice(2,10)),
+            date: t.date || '1970-01-01',
+            type: (t.type==='mock') ? 'mock' : 'sectional',
+            section: t.section,
+            mockGroup: t.mockGroup || null,
+            series: t.series || 'Other',
+            score: parseFloat(t.score),
+            percentile: (t.percentile===null || t.percentile===undefined || isNaN(parseFloat(t.percentile))) ? null : parseFloat(t.percentile),
+            timeTakenMin: (t.timeTakenMin===null || t.timeTakenMin===undefined || isNaN(parseFloat(t.timeTakenMin))) ? null : parseFloat(t.timeTakenMin),
+            attempted: (t.attempted===null || t.attempted===undefined || isNaN(parseFloat(t.attempted))) ? null : parseFloat(t.attempted),
+            correct: (t.correct===null || t.correct===undefined || isNaN(parseFloat(t.correct))) ? null : parseFloat(t.correct),
+            errorTag: t.errorTag || null,
+            notes: typeof t.notes === 'string' ? t.notes : ''
+          }))
+      : [];
+    raw.activeSession = (raw.activeSession && raw.activeSession.start) ? raw.activeSession : null;
+    return raw;
+  }
+
+  function loadData(){
+    let raw;
+    try{ raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); }catch(e){ raw = null; }
+    return normalizeData(raw);
+  }
+
+  function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+  let data = loadData();
+  let calViewYear, calViewMonth; // month is 0-indexed
+  let tickInterval = null;
+  let selectedDateKey = null;
+
+  const todayKey = () => dateKey(new Date());
+  function dateKey(d){
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function fmtHM(mins){
+    mins = Math.round(mins);
+    const h = Math.floor(mins/60), m = mins%60;
+    return `${h}h ${m}m`;
+  }
+  function fmtClock(totalSec){
+    const h = String(Math.floor(totalSec/3600)).padStart(2,'0');
+    const m = String(Math.floor((totalSec%3600)/60)).padStart(2,'0');
+    const s = String(Math.floor(totalSec%60)).padStart(2,'0');
+    return `${h}:${m}:${s}`;
+  }
+  function fmtTime(iso){
+    const d = new Date(iso);
+    let h = d.getHours(); const m = String(d.getMinutes()).padStart(2,'0');
+    const ap = h>=12 ? 'PM':'AM'; h = h%12; if(h===0) h=12;
+    return `${h}:${m} ${ap}`;
+  }
+  function dayTotalSec(dayObj){
+    if(!dayObj || !dayObj.sessions) return 0;
+    return dayObj.sessions.reduce((s,x)=>s+x.durationSec,0);
+  }
+  function dayLongestSec(dayObj){
+    if(!dayObj || !dayObj.sessions || !dayObj.sessions.length) return 0;
+    return Math.max(...dayObj.sessions.map(x=>x.durationSec));
+  }
+
+  // ---------- Header: date + countdown ----------
+  function renderHeader(){
+    const now = new Date();
+    document.getElementById('todayLabel').textContent = now.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'});
+    const cat = new Date(data.settings.catDate + 'T00:00:00');
+    const diffDays = Math.ceil((cat - new Date(now.toDateString())) / 86400000);
+    document.getElementById('daysLeft').textContent = diffDays >= 0 ? diffDays : 0;
+  }
+
+  // ---------- Timer ----------
+  const RING_R = 103, RING_C = 2*Math.PI*103;
+  const ringEl = document.getElementById('ringProgress');
+  ringEl.style.strokeDasharray = RING_C;
+
+  function currentSessionElapsedSec(){
+    if(!data.activeSession) return 0;
+    return Math.floor((Date.now() - new Date(data.activeSession.start).getTime())/1000);
+  }
+
+  function renderTimer(){
+    const btn = document.getElementById('timerBtn');
+    const running = !!data.activeSession;
+    btn.classList.toggle('running', running);
+    document.getElementById('timerState').textContent = running ? 'Tap to pause' : 'Tap to start';
+
+    const liveExtra = running ? currentSessionElapsedSec() : 0;
+    document.getElementById('timerDigits').textContent = fmtClock(liveExtra);
+
+    const today = data.days[todayKey()];
+    const todaySec = dayTotalSec(today) + liveExtra;
+    const targetSec = (today && today.targetMinutesAtStart ? today.targetMinutesAtStart : data.settings.dailyTargetMinutes) * 60;
+    const pct = targetSec > 0 ? Math.min(todaySec/targetSec, 1) : 0;
+    const offset = RING_C * (1 - pct);
+    ringEl.style.strokeDashoffset = offset;
+    ringEl.classList.toggle('met', todaySec >= targetSec && targetSec > 0);
+
+    document.getElementById('todayTotal').textContent = fmtHM(todaySec/60);
+    document.getElementById('todayTargetLabel').textContent = fmtHM((today && today.targetMinutesAtStart ? today.targetMinutesAtStart : data.settings.dailyTargetMinutes));
+  }
+
+  function toggleTimer(){
+    if(data.activeSession){
+      // pause -> log session
+      const startIso = data.activeSession.start;
+      const endIso = new Date().toISOString();
+      const durationSec = Math.max(1, Math.floor((new Date(endIso) - new Date(startIso))/1000));
+      const key = dateKey(new Date(startIso));
+      if(!data.days[key]) data.days[key] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
+      data.days[key].sessions.push({start:startIso, end:endIso, durationSec});
+      if(durationSec > data.longestEverSec) data.longestEverSec = durationSec;
+      data.activeSession = null;
+      clearInterval(tickInterval); tickInterval = null;
+      saveData();
+      renderAll();
+    } else {
+      const startIso = new Date().toISOString();
+      const key = dateKey(new Date(startIso));
+      if(!data.days[key]) data.days[key] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
+      data.activeSession = { start: startIso };
+      saveData();
+      tickInterval = setInterval(renderTimer, 1000);
+      renderAll();
+    }
+  }
+  document.getElementById('timerBtn').addEventListener('click', toggleTimer);
+
+  // resume ticking if a session was already running on load
+  if(data.activeSession){ tickInterval = setInterval(renderTimer, 1000); }
+
+  // ---------- Today's session list ----------
+  function renderSessionList(){
+    const ul = document.getElementById('sessionList');
+    ul.innerHTML = '';
+    const today = data.days[todayKey()];
+    const sessions = (today && today.sessions) || [];
+    if(!sessions.length){
+      ul.innerHTML = '<div class="empty-note">No sessions logged yet today. Hit the timer to start.</div>';
+      return;
+    }
+    sessions.slice().reverse().forEach(s=>{
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="times">${fmtTime(s.start)} – ${fmtTime(s.end)}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span>`;
+      ul.appendChild(li);
+    });
+  }
+
+  // ---------- Stats ----------
+  function allDayKeysSorted(){
+    return Object.keys(data.days).sort();
+  }
+  function computeStreak(){
+    let streak = 0;
+    let d = new Date();
+    // if today not met yet, start counting from yesterday
+    const t = data.days[todayKey()];
+    const tTarget = (t && t.targetMinutesAtStart ? t.targetMinutesAtStart : data.settings.dailyTargetMinutes)*60;
+    if(!t || dayTotalSec(t) < tTarget){ d.setDate(d.getDate()-1); }
+    while(true){
+      const k = dateKey(d);
+      const dayObj = data.days[k];
+      const target = (dayObj && dayObj.targetMinutesAtStart ? dayObj.targetMinutesAtStart : data.settings.dailyTargetMinutes)*60;
+      if(dayObj && dayTotalSec(dayObj) >= target && target > 0){
+        streak++; d.setDate(d.getDate()-1);
+      } else break;
+    }
+    return streak;
+  }
+  function renderStats(){
+    const streak = computeStreak();
+    document.getElementById('statStreak').textContent = streak + (streak===1 ? ' day' : ' days');
+    const today = data.days[todayKey()];
+    document.getElementById('statLongestToday').textContent = fmtHM(dayLongestSec(today)/60);
+    document.getElementById('statLongestEver').textContent = fmtHM(data.longestEverSec/60);
+
+    // 7 day avg (last 7 calendar days, includes zeros)
+    let sum7 = 0;
+    for(let i=0;i<7;i++){
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const obj = data.days[dateKey(d)];
+      sum7 += dayTotalSec(obj);
+    }
+    document.getElementById('statAvg7').textContent = fmtHM((sum7/7)/60);
+
+    let totalSec = 0, daysTracked = 0;
+    Object.values(data.days).forEach(d=>{ const s = dayTotalSec(d); if(s>0){ totalSec+=s; daysTracked++; } });
+    document.getElementById('statTotal').textContent = fmtHM(totalSec/60);
+    document.getElementById('statDaysTracked').textContent = daysTracked;
+  }
+
+  // ---------- Calendar ----------
+  function renderCalDow(){
+    const wrap = document.getElementById('calDow');
+    wrap.innerHTML = DOW.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  }
+  function renderCalendar(){
+    const grid = document.getElementById('calGrid');
+    grid.innerHTML = '';
+    const label = new Date(calViewYear, calViewMonth, 1).toLocaleDateString(undefined,{month:'long', year:'numeric'});
+    document.getElementById('monthLabel').textContent = label;
+
+    const firstDow = new Date(calViewYear, calViewMonth, 1).getDay();
+    const daysInMonth = new Date(calViewYear, calViewMonth+1, 0).getDate();
+    const tKey = todayKey();
+
+    for(let i=0;i<firstDow;i++){
+      const blank = document.createElement('div');
+      blank.className = 'cal-cell blank';
+      grid.appendChild(blank);
+    }
+    for(let day=1; day<=daysInMonth; day++){
+      const d = new Date(calViewYear, calViewMonth, day);
+      const key = dateKey(d);
+      const dayObj = data.days[key];
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell';
+      if(key === tKey) cell.classList.add('today');
+      if(key === selectedDateKey) cell.classList.add('selected');
+
+      const totalSec = dayTotalSec(dayObj);
+      const target = (dayObj && dayObj.targetMinutesAtStart ? dayObj.targetMinutesAtStart : data.settings.dailyTargetMinutes)*60;
+      if(!dayObj || totalSec===0){ cell.classList.add('has-none'); }
+      else if(totalSec >= target){ cell.classList.add('has-met'); }
+      else { cell.classList.add('has-low'); }
+
+      cell.innerHTML = `<span class="d">${day}</span><span class="dot"></span>`;
+      cell.addEventListener('click', ()=>{ selectedDateKey = key; renderCalendar(); renderDayDetail(); });
+      grid.appendChild(cell);
+    }
+  }
+  function renderDayDetail(){
+    const panel = document.getElementById('dayDetail');
+    if(!selectedDateKey){ panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    const dayObj = data.days[selectedDateKey];
+    const d = new Date(selectedDateKey + 'T00:00:00');
+    const niceDate = d.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    const totalSec = dayTotalSec(dayObj);
+    const target = (dayObj && dayObj.targetMinutesAtStart ? dayObj.targetMinutesAtStart : data.settings.dailyTargetMinutes);
+    let html = `<h3>${niceDate}</h3><div class="dd-total">Studied <b>${fmtHM(totalSec/60)}</b> · target ${fmtHM(target)} · longest sitting ${fmtHM(dayLongestSec(dayObj)/60)}</div>`;
+    if(!dayObj || !dayObj.sessions.length){
+      html += '<div class="empty-note">No sessions logged this day.</div>';
+    } else {
+      html += '<ul id="ddList">' + dayObj.sessions.map(s=>
+        `<li><span class="times">${fmtTime(s.start)} – ${fmtTime(s.end)}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span></li>`
+      ).join('') + '</ul>';
+    }
+    panel.innerHTML = html;
+    if(dayObj && dayObj.sessions && dayObj.sessions.length){
+      panel.querySelector('#ddList').style.cssText = 'list-style:none; display:flex; flex-direction:column; gap:8px;';
+      panel.querySelectorAll('#ddList li').forEach(li=>{
+        li.style.cssText = 'display:flex; justify-content:space-between; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;';
+      });
+    }
+  }
+  document.getElementById('prevMonth').addEventListener('click', ()=>{
+    calViewMonth--; if(calViewMonth<0){calViewMonth=11; calViewYear--;}
+    renderCalendar();
+  });
+  document.getElementById('nextMonth').addEventListener('click', ()=>{
+    calViewMonth++; if(calViewMonth>11){calViewMonth=0; calViewYear++;}
+    renderCalendar();
+  });
+
+  // ---------- Target & stretch suggestion ----------
+  function renderTargetSection(){
+    document.getElementById('targetInput').value = (data.settings.dailyTargetMinutes/60);
+    // suggest 20% stretch based on trailing 7 real study days (non-zero)
+    const nonZero = [];
+    for(let i=1;i<=14 && nonZero.length<7;i++){
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const obj = data.days[dateKey(d)];
+      const sec = dayTotalSec(obj);
+      if(sec>0) nonZero.push(sec);
+    }
+    const box = document.getElementById('stretchSuggestion');
+    if(nonZero.length >= 3){
+      const avgMin = (nonZero.reduce((a,b)=>a+b,0)/nonZero.length)/60;
+      const suggestedMin = Math.round((avgMin*1.2)/5)*5;
+      box.innerHTML = `<div class="suggest-pill">Based on your last ${nonZero.length} study days (avg ${fmtHM(avgMin)}), a 20% stretch target is <b>${fmtHM(suggestedMin)}</b>. <button id="applyStretch">Apply</button></div>`;
+      document.getElementById('applyStretch').addEventListener('click', ()=>{
+        data.settings.dailyTargetMinutes = suggestedMin;
+        saveData(); renderAll();
+      });
+    } else {
+      box.innerHTML = `<div class="empty-note">Log at least 3 study days and I'll suggest a 20% stretch target here.</div>`;
+    }
+  }
+  document.getElementById('targetInput').addEventListener('change', (e)=>{
+    const hrs = parseFloat(e.target.value);
+    if(!isNaN(hrs) && hrs>0){
+      data.settings.dailyTargetMinutes = Math.round(hrs*60);
+      saveData(); renderAll();
+    } else {
+      alert('Enter a target greater than 0 hours.');
+      e.target.value = (data.settings.dailyTargetMinutes/60);
+    }
+  });
+
+  // ---------- Settings ----------
+  document.getElementById('catDateInput').addEventListener('change', (e)=>{
+    if(e.target.value){ data.settings.catDate = e.target.value; saveData(); renderHeader(); }
+  });
+  document.getElementById('exportBtn').addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `grind-log-backup-${todayKey()}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  });
+  document.getElementById('importBtn').addEventListener('click', ()=> document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const parsed = JSON.parse(ev.target.result);
+        if(confirm('Import will overwrite current data in this browser. Continue?')){
+          data = normalizeData(parsed);
+          saveData();
+          selectedDateKey = null;
+          renderAll();
+          renderTestsPage();
+        }
+      }catch(err){ alert('Could not read that file. Make sure it is a Grind Log backup JSON.'); }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    if(confirm('This will permanently erase all logged study data in this browser. Continue?')){
+      if(confirm('Really sure? This cannot be undone.')){
+        localStorage.removeItem(STORAGE_KEY);
+        data = loadData();
+        selectedDateKey = null;
+        renderAll();
+        renderTestsPage();
+      }
+    }
+  });
+
+  // ---------- Tab switching ----------
+  const tabStudyBtn = document.getElementById('tabStudyBtn');
+  const tabTestsBtn = document.getElementById('tabTestsBtn');
+  const pageStudy = document.getElementById('page-study');
+  const pageTests = document.getElementById('page-tests');
+  function switchTab(name){
+    const toTests = name === 'tests';
+    pageStudy.classList.toggle('hidden', toTests);
+    pageTests.classList.toggle('hidden', !toTests);
+    tabStudyBtn.classList.toggle('active', !toTests);
+    tabTestsBtn.classList.toggle('active', toTests);
+    if(toTests) renderTestsPage();
+  }
+  tabStudyBtn.addEventListener('click', ()=>switchTab('study'));
+  tabTestsBtn.addEventListener('click', ()=>switchTab('tests'));
+
+  // ---------- Tests: log form state ----------
+  let testType = 'sectional';
+  let testSection = 'VARC';
+  let historyFilter = 'All';
+  let activeErrorTag = '';
+
+  const SECTION_TIME_CAP = { VARC:40, Quant:40, LRDI:40, Overall:120 };
+
+  function buildSectionBlockHTML(sec){
+    const cap = SECTION_TIME_CAP[sec] || 40;
+    return `<div class="sec-block" data-sec="${sec}">
+      <div class="sec-block-title">${sec}</div>
+      <div class="field-row">
+        <div class="field"><label>Score</label><input type="number" inputmode="decimal" step="0.01" class="f-score"></div>
+        <div class="field"><label>Percentile</label><input type="number" inputmode="decimal" step="0.01" min="0" max="100" class="f-pct"></div>
+        <div class="field"><label>Time (min)</label><input type="number" inputmode="decimal" step="1" min="0" max="${cap}" class="f-time"></div>
+      </div>
+      <button type="button" class="detail-toggle">+ Add attempted / correct (optional)</button>
+      <div class="field-row detail-row hidden">
+        <div class="field"><label>Attempted</label><input type="number" inputmode="decimal" step="1" min="0" class="f-attempted"></div>
+        <div class="field"><label>Correct</label><input type="number" inputmode="decimal" step="1" min="0" class="f-correct"></div>
+      </div>
+    </div>`;
+  }
+  function currentSections(){
+    return testType === 'sectional' ? [testSection] : ['VARC','Quant','LRDI','Overall'];
+  }
+  function renderSectionBlocks(){
+    const wrap = document.getElementById('sectionBlocks');
+    wrap.innerHTML = currentSections().map(buildSectionBlockHTML).join('');
+    wrap.querySelectorAll('.detail-toggle').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const row = btn.nextElementSibling;
+        const nowHidden = row.classList.toggle('hidden');
+        btn.textContent = nowHidden ? '+ Add attempted / correct (optional)' : '– Hide attempted / correct';
+      });
+    });
+  }
+
+  document.getElementById('sectionPickerWrap').style.display = testType==='sectional' ? '' : 'none';
+  renderSectionBlocks();
+
+  document.querySelectorAll('#testTypeSeg .seg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      testType = btn.dataset.type;
+      document.querySelectorAll('#testTypeSeg .seg-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      document.getElementById('sectionPickerWrap').style.display = testType==='sectional' ? '' : 'none';
+      renderSectionBlocks();
+    });
+  });
+  document.querySelectorAll('#sectionSeg .seg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      testSection = btn.dataset.sec;
+      document.querySelectorAll('#sectionSeg .seg-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      renderSectionBlocks();
+    });
+  });
+  document.querySelectorAll('#errorTagChips .chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      activeErrorTag = chip.dataset.tag;
+      document.querySelectorAll('#errorTagChips .chip').forEach(c=>c.classList.toggle('active', c===chip));
+    });
+  });
+  document.querySelectorAll('#historyFilters .chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      historyFilter = chip.dataset.filter;
+      document.querySelectorAll('#historyFilters .chip').forEach(c=>c.classList.toggle('active', c===chip));
+      renderTestHistory();
+    });
+  });
+
+  function makeTestId(){ return 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function numOrNull(v){ return v===''||v===undefined ? null : parseFloat(v); }
+
+  document.getElementById('addTestBtn').addEventListener('click', ()=>{
+    const dateVal = document.getElementById('testDate').value || todayKey();
+    const series = document.getElementById('testSeries').value;
+    const notes = document.getElementById('testNotes').value.trim();
+    const groupId = testType === 'mock' ? makeTestId() : null;
+    const entries = [];
+    const errors = [];
+
+    document.querySelectorAll('#sectionBlocks .sec-block').forEach(block=>{
+      const sec = block.dataset.sec;
+      const scoreVal = block.querySelector('.f-score').value;
+      if(scoreVal === '') return; // skip sections left blank (partial mock entry allowed)
+
+      const score = parseFloat(scoreVal);
+      const percentile = numOrNull(block.querySelector('.f-pct').value);
+      const timeTakenMin = numOrNull(block.querySelector('.f-time').value);
+      const attempted = numOrNull(block.querySelector('.f-attempted').value);
+      const correct = numOrNull(block.querySelector('.f-correct').value);
+
+      if(isNaN(score)){ errors.push(`${sec}: score is not a valid number.`); return; }
+      if(percentile!==null && (isNaN(percentile) || percentile<0 || percentile>100)){ errors.push(`${sec}: percentile must be between 0 and 100.`); return; }
+      if(timeTakenMin!==null && (isNaN(timeTakenMin) || timeTakenMin<0)){ errors.push(`${sec}: time can't be negative.`); return; }
+      if(attempted!==null && (isNaN(attempted) || attempted<0)){ errors.push(`${sec}: attempted can't be negative.`); return; }
+      if(correct!==null && (isNaN(correct) || correct<0)){ errors.push(`${sec}: correct can't be negative.`); return; }
+      if(attempted!==null && correct!==null && correct>attempted){ errors.push(`${sec}: correct (${correct}) can't exceed attempted (${attempted}).`); return; }
+
+      entries.push({
+        id: makeTestId(), date: dateVal, type: testType, section: sec,
+        mockGroup: groupId, series, score, percentile, timeTakenMin, attempted, correct,
+        errorTag: activeErrorTag || null,
+        notes
+      });
+    });
+
+    if(errors.length){ alert('Please fix before saving:\n\n' + errors.join('\n')); return; }
+    if(!entries.length){ alert('Enter at least one score before saving.'); return; }
+
+    data.tests.push(...entries);
+    saveData();
+
+    // reset form for fast repeat entry, keep date/type/section selection
+    document.getElementById('testNotes').value = '';
+    activeErrorTag = '';
+    document.querySelectorAll('#errorTagChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.tag===''));
+    renderSectionBlocks();
+    renderTestsPage();
+  });
+
+  function deleteTest(id){
+    if(!confirm('Delete this entry?')) return;
+    data.tests = data.tests.filter(t=>t.id!==id);
+    saveData();
+    renderTestsPage();
+  }
+
+  function sectionEntries(section){
+    return data.tests.filter(t=>t.section===section).sort((a,b)=> a.date.localeCompare(b.date));
+  }
+
+  function renderSparkline(values){
+    if(values.length < 2) return '';
+    const w=90, h=26, pad=3;
+    const min = Math.min(...values), max = Math.max(...values);
+    const range = (max-min) || 1;
+    const step = (w-pad*2)/(values.length-1);
+    const pts = values.map((v,i)=>{
+      const x = pad + i*step;
+      const y = h-pad - ((v-min)/range)*(h-pad*2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+
+  function renderTrendCards(){
+    const grid = document.getElementById('trendGrid');
+    const sections = ['VARC','Quant','LRDI','Overall'];
+    const targets = data.settings.targetPercentile || {};
+
+    const sectionalCount = data.tests.filter(t=>t.type==='sectional').length;
+    const mockCount = new Set(data.tests.filter(t=>t.type==='mock').map(t=>t.mockGroup)).size;
+    document.getElementById('testCountLine').textContent =
+      `${sectionalCount} sectional${sectionalCount!==1?'s':''} · ${mockCount} full mock${mockCount!==1?'s':''} logged`;
+
+    grid.innerHTML = sections.map(sec=>{
+      const entries = sectionEntries(sec);
+      if(!entries.length){
+        return `<div class="trend-card empty"><div class="sec-name">${sec}</div><div class="sec-latest">No attempts yet</div></div>`;
+      }
+      const last = entries[entries.length-1];
+      const withPct = entries.filter(e=>e.percentile!==null && e.percentile!==undefined);
+      const avgPct = withPct.length ? (withPct.reduce((s,e)=>s+e.percentile,0)/withPct.length) : null;
+      const bestScore = Math.max(...entries.map(e=>e.score));
+      const withAcc = entries.filter(e=>e.attempted && e.correct!==null && e.correct!==undefined);
+      const avgAcc = withAcc.length ? (withAcc.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/withAcc.length) : null;
+      const sparkVals = withPct.length>=2 ? withPct.slice(-10).map(e=>e.percentile) : entries.slice(-10).map(e=>e.score);
+
+      const target = targets[sec];
+      let latestDisplay, hitClass = '';
+      if(last.percentile!==null && last.percentile!==undefined){
+        latestDisplay = last.percentile+'%ile';
+        if(target){ hitClass = last.percentile >= target ? 'pct-hit' : 'pct-miss'; }
+      } else {
+        latestDisplay = last.score;
+      }
+      const targetNote = target ? ` · target ${target}%ile` : '';
+
+      return `<div class="trend-card">
+        <div class="sec-name">${sec} · ${entries.length} attempt${entries.length>1?'s':''}</div>
+        <div class="sec-stats">
+          <div>
+            <div class="sec-latest ${hitClass}">${latestDisplay}</div>
+            <div class="sec-sub">best score ${bestScore}${avgPct!==null ? ' · avg '+avgPct.toFixed(1)+'%ile' : ''}${targetNote}</div>
+            ${avgAcc!==null ? `<div class="sec-sub">avg accuracy ${avgAcc.toFixed(0)}%</div>` : ''}
+          </div>
+          ${renderSparkline(sparkVals)}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderTestHistory(){
+    const tbody = document.getElementById('testTableBody');
+    const emptyNote = document.getElementById('testHistoryEmpty');
+    let list = data.tests.slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    if(historyFilter !== 'All') list = list.filter(t=>t.section===historyFilter);
+
+    if(!list.length){
+      tbody.innerHTML = '';
+      emptyNote.classList.remove('hidden');
+      return;
+    }
+    emptyNote.classList.add('hidden');
+    tbody.innerHTML = list.map(t=>{
+      const niceDate = new Date(t.date+'T00:00:00').toLocaleDateString(undefined,{day:'numeric', month:'short'});
+      const acc = (t.attempted && t.correct!==null && t.correct!==undefined) ? Math.round(t.correct/t.attempted*100)+'%' : '—';
+      const time = (t.timeTakenMin!==null && t.timeTakenMin!==undefined) ? t.timeTakenMin+'m' : '—';
+      const tag = t.type==='mock' ? 'Mock' : 'Sectional';
+      const noteParts = [t.series, tag, t.errorTag].filter(Boolean).join(' · ');
+      const fullNote = [noteParts, t.notes].filter(Boolean).join(' — ') || '—';
+      return `<tr>
+        <td>${niceDate}</td>
+        <td><span class="sec-tag ${t.section}">${t.section}</span></td>
+        <td class="score-cell">${t.score}</td>
+        <td class="pct-cell">${t.percentile!==null && t.percentile!==undefined ? t.percentile+'%' : '—'}</td>
+        <td class="pct-cell">${acc}</td>
+        <td class="pct-cell">${time}</td>
+        <td class="notes-cell" title="${fullNote.replace(/"/g,'&quot;')}">${fullNote}</td>
+        <td><button class="del-btn" data-id="${t.id}" aria-label="Delete entry">✕</button></td>
+      </tr>`;
+    }).join('');
+    tbody.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>deleteTest(btn.dataset.id));
+    });
+  }
+
+  function renderTargetInputs(){
+    const t = data.settings.targetPercentile || {};
+    document.getElementById('tgtVARC').value = t.VARC ?? '';
+    document.getElementById('tgtQuant').value = t.Quant ?? '';
+    document.getElementById('tgtLRDI').value = t.LRDI ?? '';
+    document.getElementById('tgtOverall').value = t.Overall ?? '';
+  }
+  ['VARC','Quant','LRDI','Overall'].forEach(sec=>{
+    document.getElementById('tgt'+sec).addEventListener('change', (e)=>{
+      if(!data.settings.targetPercentile) data.settings.targetPercentile = {};
+      const v = e.target.value;
+      if(v===''){
+        data.settings.targetPercentile[sec] = null;
+      } else {
+        const num = parseFloat(v);
+        if(isNaN(num) || num<0 || num>100){
+          alert('Target percentile must be between 0 and 100.');
+          e.target.value = data.settings.targetPercentile[sec] ?? '';
+          return;
+        }
+        data.settings.targetPercentile[sec] = num;
+      }
+      saveData();
+      renderTrendCards();
+    });
+  });
+
+  function renderTestsPage(){
+    if(!document.getElementById('testDate').value){
+      document.getElementById('testDate').value = todayKey();
+    }
+    renderTargetInputs();
+    renderTrendCards();
+    renderTestHistory();
+  }
+
+  // ---------- Render all ----------
+  function renderAll(){
+    renderHeader();
+    renderTimer();
+    renderSessionList();
+    renderStats();
+    renderCalendar();
+    renderDayDetail();
+    renderTargetSection();
+    document.getElementById('catDateInput').value = data.settings.catDate;
+  }
+
+  const now = new Date();
+  calViewYear = now.getFullYear();
+  calViewMonth = now.getMonth();
+  renderCalDow();
+  renderAll();
+  document.getElementById('testDate').value = todayKey();
+  renderTestsPage();
+
+  // keep countdown/date fresh if left open across midnight
+  setInterval(renderHeader, 60000);
+})();
+</script>
+</body>
+</html>
