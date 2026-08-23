@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title> CAT 2026</title>
+<title>Grind Log — CAT 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -124,6 +124,19 @@
   .pct-hit{color:var(--success);}
   .pct-miss{color:#e87a5a;}
 
+  .goal-progress{font-size:13px; color:var(--text-dim); margin-bottom:12px;}
+  .goal-item{display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface-2); border-radius:8px; margin-bottom:8px;}
+  .goal-item input[type="checkbox"]{width:20px; height:20px; accent-color:var(--accent); flex-shrink:0; cursor:pointer;}
+  .goal-item .goal-text{flex:1; font-size:14px;}
+  .goal-item.done .goal-text{color:var(--text-dim); text-decoration:line-through;}
+  .goal-manage-row{display:flex; align-items:center; gap:6px; padding:9px 10px; background:var(--surface-2); border-radius:8px; margin-bottom:8px;}
+  .goal-manage-row .goal-text{flex:1; font-size:13px;}
+  .goal-manage-row button{background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:12.5px; padding:5px 8px; white-space:nowrap;}
+  .goal-manage-row button:hover{color:var(--accent);}
+  .goal-manage-row button.remove:hover{color:#e87a5a;}
+  .goal-edit-input{flex:1; background:var(--surface); border:1px solid var(--accent); color:var(--text); padding:7px 9px; border-radius:6px; font-size:13px; font-family:'Inter',sans-serif;}
+  .archived-list{margin-top:14px; opacity:0.75;}
+
   /* ---------- Hero ---------- */
   .hero{padding:28px 0 20px; text-align:center;}
   .hero-top{display:flex; justify-content:space-between; align-items:flex-start; text-align:left; margin-bottom:22px;}
@@ -224,6 +237,7 @@
   <nav class="tabbar">
     <button class="tab-btn active" id="tabStudyBtn" data-page="study">Study</button>
     <button class="tab-btn" id="tabTestsBtn" data-page="tests">Tests</button>
+    <button class="tab-btn" id="tabGoalsBtn" data-page="goals">Goals</button>
   </nav>
 
   <div id="page-study" class="page">
@@ -432,12 +446,54 @@
 
   </div><!-- /page-tests -->
 
+  <div id="page-goals" class="page hidden">
+
+  <section>
+    <h2>Today's targets</h2>
+    <div class="goal-progress" id="goalProgressLine"></div>
+    <div id="todayGoalList"></div>
+  </section>
+
+  <section>
+    <h2>History</h2>
+    <div class="cal-header">
+      <button id="goalPrevMonth" aria-label="Previous month">‹</button>
+      <div class="month-label" id="goalMonthLabel">—</div>
+      <button id="goalNextMonth" aria-label="Next month">›</button>
+    </div>
+    <div class="cal-grid" id="goalCalDow"></div>
+    <div class="cal-grid" id="goalCalGrid"></div>
+    <div class="day-detail hidden" id="goalDayDetail"></div>
+  </section>
+
+  <section>
+    <h2>Edit goals</h2>
+    <div class="field-row">
+      <input type="text" id="newGoalInput" placeholder="Add a new daily target" style="flex:3;">
+      <button class="btn primary" id="addGoalBtn" style="flex:1;">Add</button>
+    </div>
+    <div id="activeGoalsList" style="margin-top:14px;"></div>
+    <div id="archivedGoalsWrap" class="archived-list hidden">
+      <div class="empty-note" style="margin-bottom:8px;">Archived (history is kept, just hidden from today's list)</div>
+      <div id="archivedGoalsList"></div>
+    </div>
+  </section>
+
+  </div><!-- /page-goals -->
+
   <footer>Data lives only in this browser. Export a backup regularly.</footer>
 </div>
 
 <script>
 (function(){
   const STORAGE_KEY = 'grindLogData';
+  const DEFAULT_GOALS = [
+    { id:'goal_1', text:'20 quality Quant questions', archived:false },
+    { id:'goal_2', text:'3–4 quality LRDI sets', archived:false },
+    { id:'goal_3', text:'3 RCs + 5–6 VA questions (VARC)', archived:false },
+    { id:'goal_4', text:'45 mins of reading', archived:false },
+    { id:'goal_5', text:"Plan tomorrow's targets before bed", archived:false }
+  ];
   const DOW = ['S','M','T','W','T','F','S'];
 
   function normalizeData(raw){
@@ -480,6 +536,22 @@
           }))
       : [];
     raw.activeSession = (raw.activeSession && raw.activeSession.start) ? raw.activeSession : null;
+
+    // Daily targets checklist — seeded once with your given goals if this data has never had any.
+    // Existing goals (if present) are kept exactly as-is, just sanitized.
+    raw.goals = Array.isArray(raw.goals) && raw.goals.length
+      ? raw.goals
+          .filter(g => g && typeof g==='object' && typeof g.text==='string' && g.text.trim())
+          .map(g => ({ id: g.id || ('goal_'+Math.random().toString(36).slice(2,9)), text: g.text, archived: !!g.archived }))
+      : DEFAULT_GOALS.map(g => ({...g}));
+
+    raw.goalLogs = (raw.goalLogs && typeof raw.goalLogs==='object') ? raw.goalLogs : {};
+    Object.keys(raw.goalLogs).forEach(day=>{
+      const dayLog = raw.goalLogs[day];
+      if(!dayLog || typeof dayLog !== 'object'){ raw.goalLogs[day] = {}; return; }
+      Object.keys(dayLog).forEach(gid=>{ dayLog[gid] = !!dayLog[gid]; });
+    });
+
     return raw;
   }
 
@@ -714,6 +786,20 @@
       const startIso = data.activeSession.start;
       const endIso = new Date().toISOString();
       const durationSec = Math.max(1, Math.floor((new Date(endIso) - new Date(startIso))/1000));
+
+      const SANITY_CAP_SEC = 6*60*60; // 6 hours - generous, but catches "forgot to pause" cases
+      if(durationSec > SANITY_CAP_SEC){
+        const hrs = (durationSec/3600).toFixed(1);
+        const keep = confirm(`This session is showing as ${hrs} hours long — looks like the timer may have been left running (tab open, phone locked, etc). Click OK to log it anyway, or Cancel to discard this session without saving it.`);
+        if(!keep){
+          data.activeSession = null;
+          clearInterval(tickInterval); tickInterval = null;
+          saveData();
+          renderAll();
+          return;
+        }
+      }
+
       const key = dateKey(new Date(startIso));
       if(!data.days[key]) data.days[key] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
       data.days[key].sessions.push({start:startIso, end:endIso, durationSec});
@@ -755,9 +841,6 @@
   }
 
   // ---------- Stats ----------
-  function allDayKeysSorted(){
-    return Object.keys(data.days).sort();
-  }
   function computeStreak(){
     let streak = 0;
     let d = new Date();
@@ -952,18 +1035,23 @@
   // ---------- Tab switching ----------
   const tabStudyBtn = document.getElementById('tabStudyBtn');
   const tabTestsBtn = document.getElementById('tabTestsBtn');
+  const tabGoalsBtn = document.getElementById('tabGoalsBtn');
   const pageStudy = document.getElementById('page-study');
   const pageTests = document.getElementById('page-tests');
+  const pageGoals = document.getElementById('page-goals');
   function switchTab(name){
-    const toTests = name === 'tests';
-    pageStudy.classList.toggle('hidden', toTests);
-    pageTests.classList.toggle('hidden', !toTests);
-    tabStudyBtn.classList.toggle('active', !toTests);
-    tabTestsBtn.classList.toggle('active', toTests);
-    if(toTests) renderTestsPage();
+    pageStudy.classList.toggle('hidden', name!=='study');
+    pageTests.classList.toggle('hidden', name!=='tests');
+    pageGoals.classList.toggle('hidden', name!=='goals');
+    tabStudyBtn.classList.toggle('active', name==='study');
+    tabTestsBtn.classList.toggle('active', name==='tests');
+    tabGoalsBtn.classList.toggle('active', name==='goals');
+    if(name==='tests') renderTestsPage();
+    if(name==='goals') renderGoalsPage();
   }
   tabStudyBtn.addEventListener('click', ()=>switchTab('study'));
   tabTestsBtn.addEventListener('click', ()=>switchTab('tests'));
+  tabGoalsBtn.addEventListener('click', ()=>switchTab('goals'));
 
   // ---------- Tests: log form state ----------
   let testType = 'sectional';
@@ -1264,6 +1352,217 @@
     renderTestHistory();
   }
 
+  // ---------- Goals (daily targets checklist) ----------
+  let goalCalViewYear, goalCalViewMonth;
+  let goalSelectedDateKey = null;
+
+  function activeGoals(){ return data.goals.filter(g=>!g.archived); }
+  function goalById(id){ return data.goals.find(g=>g.id===id); }
+
+  function toggleGoal(goalId, checked){
+    const key = todayKey();
+    if(!data.goalLogs[key]) data.goalLogs[key] = {};
+    data.goalLogs[key][goalId] = checked;
+    saveData();
+    renderTodayGoals();
+    renderGoalCalendar();
+  }
+
+  function renderTodayGoals(){
+    const list = document.getElementById('todayGoalList');
+    const goals = activeGoals();
+    const key = todayKey();
+    if(!data.goalLogs[key]) data.goalLogs[key] = {};
+    let backfilled = false;
+    goals.forEach(g=>{
+      if(!(g.id in data.goalLogs[key])){ data.goalLogs[key][g.id] = false; backfilled = true; }
+    });
+    if(backfilled) saveData();
+    const todayLog = data.goalLogs[key];
+
+    if(!goals.length){
+      list.innerHTML = '<div class="empty-note">No active targets — add one below.</div>';
+      document.getElementById('goalProgressLine').textContent = '';
+      return;
+    }
+    const doneCount = goals.filter(g=>todayLog[g.id]).length;
+    document.getElementById('goalProgressLine').textContent = `${doneCount} of ${goals.length} done today`;
+    list.innerHTML = goals.map(g=>{
+      const checked = !!todayLog[g.id];
+      return `<label class="goal-item ${checked?'done':''}">
+        <input type="checkbox" data-goal-id="${g.id}" ${checked?'checked':''}>
+        <span class="goal-text">${g.text}</span>
+      </label>`;
+    }).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change', ()=> toggleGoal(cb.dataset.goalId, cb.checked));
+    });
+  }
+
+  function dayGoalStats(dateKeyStr){
+    const dayLog = data.goalLogs[dateKeyStr];
+    if(!dayLog) return null;
+    const ids = Object.keys(dayLog);
+    if(!ids.length) return null;
+    const done = ids.filter(id=>dayLog[id]).length;
+    return { total: ids.length, done };
+  }
+
+  function renderGoalCalDow(){
+    document.getElementById('goalCalDow').innerHTML = DOW.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  }
+
+  function renderGoalCalendar(){
+    const grid = document.getElementById('goalCalGrid');
+    grid.innerHTML = '';
+    const label = new Date(goalCalViewYear, goalCalViewMonth, 1).toLocaleDateString(undefined,{month:'long', year:'numeric'});
+    document.getElementById('goalMonthLabel').textContent = label;
+
+    const firstDow = new Date(goalCalViewYear, goalCalViewMonth, 1).getDay();
+    const daysInMonth = new Date(goalCalViewYear, goalCalViewMonth+1, 0).getDate();
+    const tKey = todayKey();
+
+    for(let i=0;i<firstDow;i++){
+      const blank = document.createElement('div');
+      blank.className = 'cal-cell blank';
+      grid.appendChild(blank);
+    }
+    for(let day=1; day<=daysInMonth; day++){
+      const d = new Date(goalCalViewYear, goalCalViewMonth, day);
+      const key = dateKey(d);
+      const stats = dayGoalStats(key);
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell';
+      if(key === tKey) cell.classList.add('today');
+      if(key === goalSelectedDateKey) cell.classList.add('selected');
+
+      if(!stats){ cell.classList.add('has-none'); }
+      else if(stats.done >= stats.total){ cell.classList.add('has-met'); }
+      else { cell.classList.add('has-low'); }
+
+      cell.innerHTML = `<span class="d">${day}</span><span class="dot"></span>`;
+      cell.addEventListener('click', ()=>{ goalSelectedDateKey = key; renderGoalCalendar(); renderGoalDayDetail(); });
+      grid.appendChild(cell);
+    }
+  }
+
+  function renderGoalDayDetail(){
+    const panel = document.getElementById('goalDayDetail');
+    if(!goalSelectedDateKey){ panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    const d = new Date(goalSelectedDateKey + 'T00:00:00');
+    const niceDate = d.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    const dayLog = data.goalLogs[goalSelectedDateKey];
+
+    let html = `<h3>${niceDate}</h3>`;
+    if(!dayLog || !Object.keys(dayLog).length){
+      html += '<div class="empty-note">No targets logged this day.</div>';
+    } else {
+      html += Object.keys(dayLog).map(gid=>{
+        const goal = goalById(gid);
+        const text = goal ? goal.text : '(removed target)';
+        const done = dayLog[gid];
+        return `<div class="goal-item ${done?'done':''}" style="cursor:default;">
+          <span style="width:20px; text-align:center; color:${done?'var(--success)':'var(--text-faint)'};">${done?'✓':'✗'}</span>
+          <span class="goal-text">${text}</span>
+        </div>`;
+      }).join('');
+    }
+    panel.innerHTML = html;
+  }
+
+  document.getElementById('goalPrevMonth').addEventListener('click', ()=>{
+    goalCalViewMonth--; if(goalCalViewMonth<0){goalCalViewMonth=11; goalCalViewYear--;}
+    renderGoalCalendar();
+  });
+  document.getElementById('goalNextMonth').addEventListener('click', ()=>{
+    goalCalViewMonth++; if(goalCalViewMonth>11){goalCalViewMonth=0; goalCalViewYear++;}
+    renderGoalCalendar();
+  });
+
+  function makeGoalId(){ return 'goal_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+  function renderGoalManageLists(){
+    const activeList = document.getElementById('activeGoalsList');
+    const archived = data.goals.filter(g=>g.archived);
+    const archivedWrap = document.getElementById('archivedGoalsWrap');
+    const archivedList = document.getElementById('archivedGoalsList');
+
+    activeList.innerHTML = activeGoals().map(g=>`
+      <div class="goal-manage-row" data-goal-id="${g.id}">
+        <span class="goal-text">${g.text}</span>
+        <button class="edit-goal-btn" data-goal-id="${g.id}">Edit</button>
+        <button class="remove archive-goal-btn" data-goal-id="${g.id}">Remove</button>
+      </div>`).join('') || '<div class="empty-note">No active targets.</div>';
+
+    if(archived.length){
+      archivedWrap.classList.remove('hidden');
+      archivedList.innerHTML = archived.map(g=>`
+        <div class="goal-manage-row" data-goal-id="${g.id}">
+          <span class="goal-text">${g.text}</span>
+          <button class="restore-goal-btn" data-goal-id="${g.id}">Restore</button>
+        </div>`).join('');
+    } else {
+      archivedWrap.classList.add('hidden');
+      archivedList.innerHTML = '';
+    }
+
+    activeList.querySelectorAll('.edit-goal-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> beginEditGoal(btn.dataset.goalId));
+    });
+    activeList.querySelectorAll('.archive-goal-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(confirm('Remove this target from today\'s checklist? Past history for it is kept.')){
+          const g = goalById(btn.dataset.goalId);
+          if(g){ g.archived = true; saveData(); renderGoalsPage(); }
+        }
+      });
+    });
+    archivedList.querySelectorAll('.restore-goal-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const g = goalById(btn.dataset.goalId);
+        if(g){ g.archived = false; saveData(); renderGoalsPage(); }
+      });
+    });
+  }
+
+  function beginEditGoal(goalId){
+    const row = document.querySelector(`#activeGoalsList .goal-manage-row[data-goal-id="${goalId}"]`);
+    if(!row) return;
+    const goal = goalById(goalId);
+    row.innerHTML = `
+      <input type="text" class="goal-edit-input" value="${goal.text.replace(/"/g,'&quot;')}">
+      <button class="save-goal-btn">Save</button>
+      <button class="cancel-goal-btn">Cancel</button>`;
+    const input = row.querySelector('.goal-edit-input');
+    input.focus();
+    row.querySelector('.save-goal-btn').addEventListener('click', ()=>{
+      const newText = input.value.trim();
+      if(!newText){ alert('Target text cannot be empty.'); return; }
+      goal.text = newText;
+      saveData();
+      renderGoalsPage();
+    });
+    row.querySelector('.cancel-goal-btn').addEventListener('click', ()=> renderGoalManageLists());
+  }
+
+  document.getElementById('addGoalBtn').addEventListener('click', ()=>{
+    const input = document.getElementById('newGoalInput');
+    const text = input.value.trim();
+    if(!text){ alert('Type a target before adding it.'); return; }
+    data.goals.push({ id: makeGoalId(), text, archived:false });
+    saveData();
+    input.value = '';
+    renderGoalsPage();
+  });
+
+  function renderGoalsPage(){
+    renderTodayGoals();
+    renderGoalCalendar();
+    renderGoalDayDetail();
+    renderGoalManageLists();
+  }
+
   // ---------- Render all ----------
   function renderAll(){
     renderHeader();
@@ -1283,6 +1582,11 @@
   renderAll();
   document.getElementById('testDate').value = todayKey();
   renderTestsPage();
+
+  goalCalViewYear = now.getFullYear();
+  goalCalViewMonth = now.getMonth();
+  renderGoalCalDow();
+  renderGoalsPage();
 
   // resume cloud sync silently if this device already linked before;
   // otherwise pre-fill the config so a NEW device only needs the Sync ID typed in
