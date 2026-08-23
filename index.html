@@ -490,6 +490,19 @@
   }
 
   // ---------- Cloud Sync (Firebase Firestore) ----------
+  // Safe to keep public: Firebase web config identifies the project but grants no
+  // access by itself — real access control is the Firestore rules, not this object.
+  // The Sync ID is the real key and is intentionally NOT hardcoded here.
+  const DEFAULT_FIREBASE_CONFIG = {
+    "apiKey": "AIzaSyCny9QPEuMN8XKcmjMqpZFWUBcRm7Q_Anc",
+    "authDomain": "cat-tracker-71ae3.firebaseapp.com",
+    "projectId": "cat-tracker-71ae3",
+    "storageBucket": "cat-tracker-71ae3.firebasestorage.app",
+    "messagingSenderId": "644536580902",
+    "appId": "1:644536580902:web:340a48cd0eec681979dfe7",
+    "measurementId": "G-VVPP9EFKTG"
+  };
+
   let syncDocRef = null;
   let unsubscribeSnapshot = null;
 
@@ -1255,13 +1268,16 @@
   document.getElementById('testDate').value = todayKey();
   renderTestsPage();
 
-  // resume cloud sync silently if previously connected on this device
+  // resume cloud sync silently if this device already linked before;
+  // otherwise pre-fill the config so a NEW device only needs the Sync ID typed in
   const savedFbConfig = localStorage.getItem('fbConfig');
   const savedSyncId = localStorage.getItem('syncId');
   if(savedFbConfig && savedSyncId){
     document.getElementById('fbConfigInput').value = savedFbConfig;
     document.getElementById('syncIdInput').value = savedSyncId;
     setTimeout(()=> connectCloud(savedFbConfig, savedSyncId, {silent:true}), 300);
+  } else {
+    document.getElementById('fbConfigInput').value = JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
   }
 
   // keep countdown/date fresh if left open across midnight
