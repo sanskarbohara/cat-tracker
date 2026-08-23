@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#0a0a0f;
@@ -67,6 +69,13 @@
     width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
     padding:10px 12px; border-radius:8px; font-size:14px; font-family:'Inter',sans-serif;
   }
+  .field textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:12px; font-family:'JetBrains Mono',monospace; resize:vertical;
+  }
+  .sync-status{font-size:12.5px; color:var(--text-dim); margin-top:10px; line-height:1.5;}
+  .sync-status.ok{color:var(--success);}
+  .sync-status.err{color:#e87a5a;}
 
   /* ---------- Section trend cards ---------- */
   .trend-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
@@ -85,7 +94,7 @@
 
   /* ---------- Test history table ---------- */
   .table-wrap{overflow-x:auto;}
-  table{width:100%; border-collapse:collapse; font-size:12.5px; min-width:520px;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px; min-width:660px;}
   thead th{text-align:left; color:var(--text-faint); font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; padding:0 8px 8px;}
   tbody td{padding:9px 8px; border-top:1px solid var(--border);}
   tbody tr:hover{background:var(--surface-2);}
@@ -293,12 +302,38 @@
     </div>
   </section>
 
+  <section>
+    <h2>Cloud Sync</h2>
+    <div class="empty-note">Optional, one-time setup (~10 min). Once connected, everything saves to your own free Firebase project automatically — no more manual export/import, and it survives a cleared browser or a new device.</div>
+    <div class="field" style="margin-top:12px;">
+      <label for="fbConfigInput">Firebase config (paste the object from your Firebase project)</label>
+      <textarea id="fbConfigInput" rows="4" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}'></textarea>
+    </div>
+    <div class="field">
+      <label for="syncIdInput">Sync ID — save this somewhere safe, it's your key to this data</label>
+      <div class="field-row">
+        <input type="text" id="syncIdInput" placeholder="tap Generate" style="flex:2;">
+        <button class="btn" id="genSyncIdBtn" style="flex:1;">Generate</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" id="connectSyncBtn">Connect</button>
+      <button class="btn" id="copySyncIdBtn">Copy Sync ID</button>
+      <button class="btn danger" id="disconnectSyncBtn">Disconnect</button>
+    </div>
+    <div class="sync-status" id="cloudSyncStatus">Not connected — data is only saved on this device.</div>
+  </section>
+
   </div><!-- /page-study -->
 
   <div id="page-tests" class="page hidden">
 
   <section>
     <h2>Log a test</h2>
+    <div class="field">
+      <label for="testName">Test name</label>
+      <input type="text" id="testName" placeholder="e.g. SimCAT 5, iQuanta Mock 12">
+    </div>
     <div class="field-row">
       <div class="field">
         <label for="testDate">Date</label>
@@ -382,7 +417,7 @@
     </div>
     <div class="table-wrap">
       <table id="testTable">
-        <thead><tr><th>Date</th><th>Section</th><th>Score</th><th>%ile</th><th>Acc%</th><th>Time</th><th>Notes</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Test</th><th>Section</th><th>Score</th><th>%ile</th><th>Acc%</th><th>Time</th><th>Notes</th><th></th></tr></thead>
         <tbody id="testTableBody"></tbody>
       </table>
     </div>
@@ -416,6 +451,7 @@
       if(!raw.days[k] || !Array.isArray(raw.days[k].sessions)) raw.days[k] = {sessions:[], targetMinutesAtStart: raw.settings.dailyTargetMinutes};
     });
     if(typeof raw.longestEverSec !== 'number' || isNaN(raw.longestEverSec)) raw.longestEverSec = 0;
+    if(typeof raw.lastModified !== 'number' || isNaN(raw.lastModified)) raw.lastModified = 0;
     raw.tests = Array.isArray(raw.tests)
       ? raw.tests
           .filter(t => t && typeof t==='object' && t.section && !isNaN(parseFloat(t.score)))
@@ -426,11 +462,13 @@
             section: t.section,
             mockGroup: t.mockGroup || null,
             series: t.series || 'Other',
+            testName: typeof t.testName === 'string' ? t.testName : '',
             score: parseFloat(t.score),
             percentile: (t.percentile===null || t.percentile===undefined || isNaN(parseFloat(t.percentile))) ? null : parseFloat(t.percentile),
             timeTakenMin: (t.timeTakenMin===null || t.timeTakenMin===undefined || isNaN(parseFloat(t.timeTakenMin))) ? null : parseFloat(t.timeTakenMin),
             attempted: (t.attempted===null || t.attempted===undefined || isNaN(parseFloat(t.attempted))) ? null : parseFloat(t.attempted),
             correct: (t.correct===null || t.correct===undefined || isNaN(parseFloat(t.correct))) ? null : parseFloat(t.correct),
+            wrong: (t.wrong===null || t.wrong===undefined || isNaN(parseFloat(t.wrong))) ? null : parseFloat(t.wrong),
             errorTag: t.errorTag || null,
             notes: typeof t.notes === 'string' ? t.notes : ''
           }))
@@ -445,7 +483,135 @@
     return normalizeData(raw);
   }
 
-  function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  function saveData(){
+    data.lastModified = Date.now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    pushToCloud();
+  }
+
+  // ---------- Cloud Sync (Firebase Firestore) ----------
+  let syncDocRef = null;
+  let unsubscribeSnapshot = null;
+
+  function setSyncStatus(msg, kind){
+    const el = document.getElementById('cloudSyncStatus');
+    if(!el) return;
+    el.textContent = msg;
+    el.classList.remove('ok','err');
+    if(kind==='ok') el.classList.add('ok');
+    if(kind==='err') el.classList.add('err');
+  }
+
+  function pushToCloud(){
+    if(!syncDocRef) return;
+    syncDocRef.set(data).then(()=>{
+      setSyncStatus('Synced just now ✓', 'ok');
+    }).catch(err=>{
+      setSyncStatus('Sync failed: ' + err.message, 'err');
+    });
+  }
+
+  function attachSnapshotListener(){
+    if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    unsubscribeSnapshot = syncDocRef.onSnapshot(snap=>{
+      if(snap.metadata.hasPendingWrites) return; // ignore echo of our own writes
+      if(!snap.exists) return;
+      const remote = snap.data();
+      const remoteTs = remote.lastModified || 0;
+      const localTs = data.lastModified || 0;
+      if(remoteTs > localTs){
+        data = normalizeData(remote);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        renderAll();
+        renderTestsPage();
+        setSyncStatus('Updated from another device ✓', 'ok');
+      }
+    }, err=>{
+      setSyncStatus('Sync listener error: ' + err.message, 'err');
+    });
+  }
+
+  function connectCloud(configStr, syncId, opts){
+    opts = opts || {};
+    if(typeof firebase === 'undefined'){
+      if(!opts.silent) setSyncStatus('Cloud library failed to load — check your internet connection and reload the page.', 'err');
+      return;
+    }
+    let config;
+    try{ config = JSON.parse(configStr); }
+    catch(e){ if(!opts.silent) alert("That doesn't look like valid Firebase config JSON. Paste the whole {...} object from your Firebase project settings."); return; }
+    if(!syncId){ if(!opts.silent) alert('Enter or generate a Sync ID first.'); return; }
+
+    try{
+      if(!firebase.apps.length){ firebase.initializeApp(config); }
+      const db = firebase.firestore();
+      syncDocRef = db.collection('studyData').doc(syncId);
+    }catch(e){
+      setSyncStatus('Could not connect: ' + e.message, 'err');
+      syncDocRef = null;
+      return;
+    }
+
+    setSyncStatus('Connecting…');
+    syncDocRef.get().then(snap=>{
+      if(snap.exists){
+        const remote = snap.data();
+        const remoteTs = remote.lastModified || 0;
+        const localTs = data.lastModified || 0;
+        if(remoteTs > localTs){
+          data = normalizeData(remote);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          renderAll();
+          renderTestsPage();
+          setSyncStatus('Connected — pulled the newer copy from the cloud ✓', 'ok');
+        } else {
+          pushToCloud();
+        }
+      } else {
+        pushToCloud();
+      }
+      attachSnapshotListener();
+      localStorage.setItem('fbConfig', configStr);
+      localStorage.setItem('syncId', syncId);
+    }).catch(err=>{
+      syncDocRef = null;
+      setSyncStatus('Could not reach Firestore: ' + err.message + ' — double check your config and Firestore rules.', 'err');
+    });
+  }
+
+  function disconnectCloud(){
+    if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    syncDocRef = null;
+    localStorage.removeItem('fbConfig');
+    localStorage.removeItem('syncId');
+    setSyncStatus('Disconnected — data is only saved on this device.');
+  }
+
+  function randomSyncId(){
+    const bytes = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  document.getElementById('genSyncIdBtn').addEventListener('click', ()=>{
+    document.getElementById('syncIdInput').value = randomSyncId();
+  });
+  document.getElementById('connectSyncBtn').addEventListener('click', ()=>{
+    connectCloud(document.getElementById('fbConfigInput').value.trim(), document.getElementById('syncIdInput').value.trim());
+  });
+  document.getElementById('copySyncIdBtn').addEventListener('click', ()=>{
+    const v = document.getElementById('syncIdInput').value.trim();
+    if(!v){ alert('No Sync ID to copy yet — generate or type one first.'); return; }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(v).then(()=> setSyncStatus('Sync ID copied to clipboard.'))
+        .catch(()=> alert('Could not copy automatically — copy it manually:\n\n' + v));
+    } else {
+      alert('Copy this Sync ID manually:\n\n' + v);
+    }
+  });
+  document.getElementById('disconnectSyncBtn').addEventListener('click', ()=>{
+    if(confirm('Disconnect cloud sync? Your data stays on this device, it just stops syncing.')) disconnectCloud();
+  });
 
   let data = loadData();
   let calViewYear, calViewMonth; // month is 0-indexed
@@ -752,11 +918,12 @@
     reader.readAsText(file);
   });
   document.getElementById('resetBtn').addEventListener('click', ()=>{
-    if(confirm('This will permanently erase all logged study data in this browser. Continue?')){
+    if(confirm('This will permanently erase all logged study data in this browser (and in cloud sync, if connected). Continue?')){
       if(confirm('Really sure? This cannot be undone.')){
         localStorage.removeItem(STORAGE_KEY);
         data = loadData();
         selectedDateKey = null;
+        saveData(); // also pushes the now-empty state to the cloud, if connected
         renderAll();
         renderTestsPage();
       }
@@ -796,10 +963,11 @@
         <div class="field"><label>Percentile</label><input type="number" inputmode="decimal" step="0.01" min="0" max="100" class="f-pct"></div>
         <div class="field"><label>Time (min)</label><input type="number" inputmode="decimal" step="1" min="0" max="${cap}" class="f-time"></div>
       </div>
-      <button type="button" class="detail-toggle">+ Add attempted / correct (optional)</button>
+      <button type="button" class="detail-toggle">+ Add attempted / correct / wrong (optional)</button>
       <div class="field-row detail-row hidden">
         <div class="field"><label>Attempted</label><input type="number" inputmode="decimal" step="1" min="0" class="f-attempted"></div>
         <div class="field"><label>Correct</label><input type="number" inputmode="decimal" step="1" min="0" class="f-correct"></div>
+        <div class="field"><label>Wrong</label><input type="number" inputmode="decimal" step="1" min="0" class="f-wrong"></div>
       </div>
     </div>`;
   }
@@ -855,6 +1023,7 @@
 
   document.getElementById('addTestBtn').addEventListener('click', ()=>{
     const dateVal = document.getElementById('testDate').value || todayKey();
+    const testName = document.getElementById('testName').value.trim();
     const series = document.getElementById('testSeries').value;
     const notes = document.getElementById('testNotes').value.trim();
     const groupId = testType === 'mock' ? makeTestId() : null;
@@ -869,19 +1038,38 @@
       const score = parseFloat(scoreVal);
       const percentile = numOrNull(block.querySelector('.f-pct').value);
       const timeTakenMin = numOrNull(block.querySelector('.f-time').value);
-      const attempted = numOrNull(block.querySelector('.f-attempted').value);
-      const correct = numOrNull(block.querySelector('.f-correct').value);
+      let attempted = numOrNull(block.querySelector('.f-attempted').value);
+      let correct = numOrNull(block.querySelector('.f-correct').value);
+      let wrong = numOrNull(block.querySelector('.f-wrong').value);
 
       if(isNaN(score)){ errors.push(`${sec}: score is not a valid number.`); return; }
       if(percentile!==null && (isNaN(percentile) || percentile<0 || percentile>100)){ errors.push(`${sec}: percentile must be between 0 and 100.`); return; }
       if(timeTakenMin!==null && (isNaN(timeTakenMin) || timeTakenMin<0)){ errors.push(`${sec}: time can't be negative.`); return; }
       if(attempted!==null && (isNaN(attempted) || attempted<0)){ errors.push(`${sec}: attempted can't be negative.`); return; }
       if(correct!==null && (isNaN(correct) || correct<0)){ errors.push(`${sec}: correct can't be negative.`); return; }
-      if(attempted!==null && correct!==null && correct>attempted){ errors.push(`${sec}: correct (${correct}) can't exceed attempted (${attempted}).`); return; }
+      if(wrong!==null && (isNaN(wrong) || wrong<0)){ errors.push(`${sec}: wrong can't be negative.`); return; }
+
+      // Official identity: Attempted = Correct + Wrong. If exactly one of the three
+      // is missing, derive it. If all three are given, they must actually add up.
+      const givenCount = [attempted, correct, wrong].filter(v=>v!==null).length;
+      if(givenCount >= 2){
+        if(attempted===null){ attempted = correct + wrong; }
+        else if(correct===null){ correct = attempted - wrong; }
+        else if(wrong===null){ wrong = attempted - correct; }
+        else if(correct + wrong !== attempted){
+          errors.push(`${sec}: attempted (${attempted}) should equal correct + wrong (${correct}+${wrong}=${correct+wrong}). Check the numbers.`);
+          return;
+        }
+        if(correct<0 || wrong<0){
+          errors.push(`${sec}: those attempted/correct/wrong numbers don't add up.`);
+          return;
+        }
+      }
 
       entries.push({
         id: makeTestId(), date: dateVal, type: testType, section: sec,
-        mockGroup: groupId, series, score, percentile, timeTakenMin, attempted, correct,
+        mockGroup: groupId, series, testName, score, percentile, timeTakenMin,
+        attempted, correct, wrong,
         errorTag: activeErrorTag || null,
         notes
       });
@@ -894,6 +1082,7 @@
     saveData();
 
     // reset form for fast repeat entry, keep date/type/section selection
+    document.getElementById('testName').value = '';
     document.getElementById('testNotes').value = '';
     activeErrorTag = '';
     document.querySelectorAll('#errorTagChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.tag===''));
@@ -987,13 +1176,15 @@
     emptyNote.classList.add('hidden');
     tbody.innerHTML = list.map(t=>{
       const niceDate = new Date(t.date+'T00:00:00').toLocaleDateString(undefined,{day:'numeric', month:'short'});
-      const acc = (t.attempted && t.correct!==null && t.correct!==undefined) ? Math.round(t.correct/t.attempted*100)+'%' : '—';
+      const hasAcc = t.attempted!==null && t.attempted!==undefined && t.attempted>0 && t.correct!==null && t.correct!==undefined;
+      const acc = hasAcc ? `${Math.round(t.correct/t.attempted*100)}% (${t.correct}/${t.attempted})` : '—';
       const time = (t.timeTakenMin!==null && t.timeTakenMin!==undefined) ? t.timeTakenMin+'m' : '—';
       const tag = t.type==='mock' ? 'Mock' : 'Sectional';
       const noteParts = [t.series, tag, t.errorTag].filter(Boolean).join(' · ');
       const fullNote = [noteParts, t.notes].filter(Boolean).join(' — ') || '—';
       return `<tr>
         <td>${niceDate}</td>
+        <td class="notes-cell" title="${(t.testName||'').replace(/"/g,'&quot;')}">${t.testName || '—'}</td>
         <td><span class="sec-tag ${t.section}">${t.section}</span></td>
         <td class="score-cell">${t.score}</td>
         <td class="pct-cell">${t.percentile!==null && t.percentile!==undefined ? t.percentile+'%' : '—'}</td>
@@ -1063,6 +1254,15 @@
   renderAll();
   document.getElementById('testDate').value = todayKey();
   renderTestsPage();
+
+  // resume cloud sync silently if previously connected on this device
+  const savedFbConfig = localStorage.getItem('fbConfig');
+  const savedSyncId = localStorage.getItem('syncId');
+  if(savedFbConfig && savedSyncId){
+    document.getElementById('fbConfigInput').value = savedFbConfig;
+    document.getElementById('syncIdInput').value = savedSyncId;
+    setTimeout(()=> connectCloud(savedFbConfig, savedSyncId, {silent:true}), 300);
+  }
 
   // keep countdown/date fresh if left open across midnight
   setInterval(renderHeader, 60000);
