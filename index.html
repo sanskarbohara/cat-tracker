@@ -388,9 +388,15 @@
   </section>
 
   <section>
-    <h2>Section trends</h2>
-    <div class="empty-note" id="testCountLine" style="margin-bottom:10px;"></div>
-    <div class="trend-grid" id="trendGrid"></div>
+    <h2>Sectional trends</h2>
+    <div class="empty-note" id="sectionalCountLine" style="margin-bottom:10px;"></div>
+    <div class="trend-grid" id="sectionalTrendGrid"></div>
+  </section>
+
+  <section>
+    <h2>Mock trends</h2>
+    <div class="empty-note" id="mockCountLine" style="margin-bottom:10px;"></div>
+    <div class="trend-grid" id="mockTrendGrid"></div>
   </section>
 
   <section>
@@ -1110,8 +1116,10 @@
     renderTestsPage();
   }
 
-  function sectionEntries(section){
-    return data.tests.filter(t=>t.section===section).sort((a,b)=> a.date.localeCompare(b.date));
+  function sectionEntries(section, type){
+    return data.tests
+      .filter(t => t.section===section && (!type || t.type===type))
+      .sort((a,b)=> a.date.localeCompare(b.date));
   }
 
   function renderSparkline(values){
@@ -1128,51 +1136,57 @@
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 
-  function renderTrendCards(){
-    const grid = document.getElementById('trendGrid');
-    const sections = ['VARC','Quant','LRDI','Overall'];
+  function buildTrendCardHTML(sec, type){
     const targets = data.settings.targetPercentile || {};
+    const entries = sectionEntries(sec, type);
+    if(!entries.length){
+      return `<div class="trend-card empty"><div class="sec-name">${sec}</div><div class="sec-latest">No attempts yet</div></div>`;
+    }
+    const last = entries[entries.length-1];
+    const withPct = entries.filter(e=>e.percentile!==null && e.percentile!==undefined);
+    const avgPct = withPct.length ? (withPct.reduce((s,e)=>s+e.percentile,0)/withPct.length) : null;
+    const bestScore = Math.max(...entries.map(e=>e.score));
+    const withAcc = entries.filter(e=>e.attempted && e.correct!==null && e.correct!==undefined);
+    const avgAcc = withAcc.length ? (withAcc.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/withAcc.length) : null;
+    const sparkVals = withPct.length>=2 ? withPct.slice(-10).map(e=>e.percentile) : entries.slice(-10).map(e=>e.score);
 
-    const sectionalCount = data.tests.filter(t=>t.type==='sectional').length;
-    const mockCount = new Set(data.tests.filter(t=>t.type==='mock').map(t=>t.mockGroup)).size;
-    document.getElementById('testCountLine').textContent =
-      `${sectionalCount} sectional${sectionalCount!==1?'s':''} · ${mockCount} full mock${mockCount!==1?'s':''} logged`;
+    const target = targets[sec];
+    let latestDisplay, hitClass = '';
+    if(last.percentile!==null && last.percentile!==undefined){
+      latestDisplay = last.percentile+'%ile';
+      if(target){ hitClass = last.percentile >= target ? 'pct-hit' : 'pct-miss'; }
+    } else {
+      latestDisplay = last.score;
+    }
+    const targetNote = target ? ` · target ${target}%ile` : '';
 
-    grid.innerHTML = sections.map(sec=>{
-      const entries = sectionEntries(sec);
-      if(!entries.length){
-        return `<div class="trend-card empty"><div class="sec-name">${sec}</div><div class="sec-latest">No attempts yet</div></div>`;
-      }
-      const last = entries[entries.length-1];
-      const withPct = entries.filter(e=>e.percentile!==null && e.percentile!==undefined);
-      const avgPct = withPct.length ? (withPct.reduce((s,e)=>s+e.percentile,0)/withPct.length) : null;
-      const bestScore = Math.max(...entries.map(e=>e.score));
-      const withAcc = entries.filter(e=>e.attempted && e.correct!==null && e.correct!==undefined);
-      const avgAcc = withAcc.length ? (withAcc.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/withAcc.length) : null;
-      const sparkVals = withPct.length>=2 ? withPct.slice(-10).map(e=>e.percentile) : entries.slice(-10).map(e=>e.score);
-
-      const target = targets[sec];
-      let latestDisplay, hitClass = '';
-      if(last.percentile!==null && last.percentile!==undefined){
-        latestDisplay = last.percentile+'%ile';
-        if(target){ hitClass = last.percentile >= target ? 'pct-hit' : 'pct-miss'; }
-      } else {
-        latestDisplay = last.score;
-      }
-      const targetNote = target ? ` · target ${target}%ile` : '';
-
-      return `<div class="trend-card">
-        <div class="sec-name">${sec} · ${entries.length} attempt${entries.length>1?'s':''}</div>
-        <div class="sec-stats">
-          <div>
-            <div class="sec-latest ${hitClass}">${latestDisplay}</div>
-            <div class="sec-sub">best score ${bestScore}${avgPct!==null ? ' · avg '+avgPct.toFixed(1)+'%ile' : ''}${targetNote}</div>
-            ${avgAcc!==null ? `<div class="sec-sub">avg accuracy ${avgAcc.toFixed(0)}%</div>` : ''}
-          </div>
-          ${renderSparkline(sparkVals)}
+    return `<div class="trend-card">
+      <div class="sec-name">${sec} · ${entries.length} attempt${entries.length>1?'s':''}</div>
+      <div class="sec-stats">
+        <div>
+          <div class="sec-latest ${hitClass}">${latestDisplay}</div>
+          <div class="sec-sub">best score ${bestScore}${avgPct!==null ? ' · avg '+avgPct.toFixed(1)+'%ile' : ''}${targetNote}</div>
+          ${avgAcc!==null ? `<div class="sec-sub">avg accuracy ${avgAcc.toFixed(0)}%</div>` : ''}
         </div>
-      </div>`;
-    }).join('');
+        ${renderSparkline(sparkVals)}
+      </div>
+    </div>`;
+  }
+
+  function renderSectionalTrendCards(){
+    const sectionalCount = data.tests.filter(t=>t.type==='sectional').length;
+    document.getElementById('sectionalCountLine').textContent =
+      `${sectionalCount} sectional${sectionalCount!==1?'s':''} logged`;
+    document.getElementById('sectionalTrendGrid').innerHTML =
+      ['VARC','Quant','LRDI'].map(sec => buildTrendCardHTML(sec, 'sectional')).join('');
+  }
+
+  function renderMockTrendCards(){
+    const mockCount = new Set(data.tests.filter(t=>t.type==='mock').map(t=>t.mockGroup)).size;
+    document.getElementById('mockCountLine').textContent =
+      `${mockCount} full mock${mockCount!==1?'s':''} logged`;
+    document.getElementById('mockTrendGrid').innerHTML =
+      ['VARC','Quant','LRDI','Overall'].map(sec => buildTrendCardHTML(sec, 'mock')).join('');
   }
 
   function renderTestHistory(){
@@ -1235,7 +1249,8 @@
         data.settings.targetPercentile[sec] = num;
       }
       saveData();
-      renderTrendCards();
+      renderSectionalTrendCards();
+      renderMockTrendCards();
     });
   });
 
@@ -1244,7 +1259,8 @@
       document.getElementById('testDate').value = todayKey();
     }
     renderTargetInputs();
-    renderTrendCards();
+    renderSectionalTrendCards();
+    renderMockTrendCards();
     renderTestHistory();
   }
 
