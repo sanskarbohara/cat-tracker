@@ -317,6 +317,12 @@
   </section>
 
   <section>
+    <h2>Automatic backups</h2>
+    <div class="empty-note">Saved automatically on this device as you use the app — no export needed. Use these if data ever looks wrong after a sync or import.</div>
+    <div id="backupsList" style="margin-top:12px;"></div>
+  </section>
+
+  <section>
     <h2>Cloud Sync</h2>
     <div class="empty-note">Optional, one-time setup (~10 min). Once connected, everything saves to your own free Firebase project automatically — no more manual export/import, and it survives a cleared browser or a new device.</div>
     <div class="field" style="margin-top:12px;">
@@ -564,7 +570,139 @@
   function saveData(){
     data.lastModified = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    pushAutoBackup(data);
     pushToCloud();
+  }
+
+  // ---------- Automatic rolling local backups ----------
+  // Independent of Cloud Sync and independent of the manual Export button.
+  // Every save keeps a timestamped snapshot in localStorage (separate key), so a
+  // sync bug, a bad import, or a forgotten manual export still leaves a way back.
+  const BACKUP_KEY = 'grindLogAutoBackups';
+  const MAX_BACKUPS = 25;
+  const MIN_BACKUP_GAP_MS = 3 * 60 * 1000; // don't snapshot more than once per 3 min
+
+  function getAutoBackups(){
+    try{
+      const list = JSON.parse(localStorage.getItem(BACKUP_KEY));
+      return Array.isArray(list) ? list : [];
+    }catch(e){ return []; }
+  }
+
+  function pushAutoBackup(snapshotData){
+    try{
+      const list = getAutoBackups();
+      const last = list[list.length - 1];
+      if(last && (Date.now() - last.ts) < MIN_BACKUP_GAP_MS) return; // throttle
+      list.push({ ts: Date.now(), data: snapshotData });
+      while(list.length > MAX_BACKUPS) list.shift();
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(list));
+    }catch(e){
+      // localStorage full or unavailable — backups are best-effort, never block a save
+    }
+  }
+
+  function restoreAutoBackup(ts){
+    const list = getAutoBackups();
+    const entry = list.find(b => b.ts === ts);
+    if(!entry) return;
+    data = normalizeData(entry.data);
+    saveData();
+    selectedDateKey = null;
+    renderAll();
+    renderTestsPage();
+    renderBackupsList();
+  }
+
+  function renderBackupsList(){
+    const wrap = document.getElementById('backupsList');
+    if(!wrap) return;
+    const list = getAutoBackups().slice().reverse();
+    if(!list.length){
+      wrap.innerHTML = '<div class="empty-note">No automatic backups yet — they build up as you use the app.</div>';
+      return;
+    }
+    wrap.innerHTML = list.map(b=>{
+      const d = new Date(b.ts);
+      const label = d.toLocaleString(undefined,{month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+      const sessCount = Object.values(b.data.days||{}).reduce((s,day)=>s+((day.sessions||[]).length),0);
+      const testCount = (b.data.tests||[]).length;
+      return `<div class="goal-manage-row" data-ts="${b.ts}">
+        <span class="goal-text">${label} <span style="color:var(--text-faint);">· ${sessCount} sessions, ${testCount} tests</span></span>
+        <button class="restore-backup-btn" data-ts="${b.ts}">Restore</button>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.restore-backup-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(confirm('Restore this backup? It will overwrite what\'s currently on this device (and re-sync to the cloud).')){
+          restoreAutoBackup(parseFloat(btn.dataset.ts));
+        }
+      });
+    });
+  }
+
+  // ---------- Merge-based conflict resolution ----------
+  // Cloud sync used to be "whichever copy has the newer lastModified wins, wholesale."
+  // That let a stale/empty device silently overwrite a fresher one — the bug that ate
+  // a day's data. Now local and remote are always MERGED (union), never replaced:
+  //  - sessions: unioned per-day, deduped by start time
+  //  - tests: unioned by id
+  //  - goals: unioned by id (text/archived from whichever copy is newer)
+  //  - goalLogs: OR'd per day/goal (checked wins over unchecked)
+  //  - activeSession: prefer whichever is actually running (local takes priority)
+  //  - settings/longestEver: take the max/newer value
+  // Tradeoff: a delete on one device won't remove an item from another device until
+  // that device has also seen the delete — deletions don't propagate destructively,
+  // by design, since destructive sync is exactly what caused the original bug.
+  function mergeData(local, remote){
+    local = normalizeData(local);
+    remote = normalizeData(remote);
+    const merged = normalizeData({});
+
+    merged.settings = (remote.lastModified||0) > (local.lastModified||0) ? remote.settings : local.settings;
+    merged.longestEverSec = Math.max(local.longestEverSec||0, remote.longestEverSec||0);
+    merged.lastModified = Math.max(local.lastModified||0, remote.lastModified||0);
+    merged.activeSession = local.activeSession || remote.activeSession || null;
+
+    // days: union, per-day sessions deduped by start timestamp
+    const dayKeys = new Set([...Object.keys(local.days||{}), ...Object.keys(remote.days||{})]);
+    merged.days = {};
+    dayKeys.forEach(k=>{
+      const lDay = local.days[k], rDay = remote.days[k];
+      const sessMap = new Map();
+      (lDay ? lDay.sessions : []).forEach(s=> sessMap.set(s.start, s));
+      (rDay ? rDay.sessions : []).forEach(s=> { if(!sessMap.has(s.start)) sessMap.set(s.start, s); });
+      const sessions = Array.from(sessMap.values()).sort((a,b)=> a.start.localeCompare(b.start));
+      const targetMinutesAtStart = (lDay && lDay.targetMinutesAtStart) || (rDay && rDay.targetMinutesAtStart) || local.settings.dailyTargetMinutes;
+      merged.days[k] = { sessions, targetMinutesAtStart };
+    });
+
+    // tests: union by id
+    const testMap = new Map();
+    (local.tests||[]).forEach(t=> testMap.set(t.id, t));
+    (remote.tests||[]).forEach(t=> { if(!testMap.has(t.id)) testMap.set(t.id, t); });
+    merged.tests = Array.from(testMap.values());
+
+    // goals: union by id, prefer newer copy's text/archived when both have it
+    const remoteNewer = (remote.lastModified||0) > (local.lastModified||0);
+    const goalMap = new Map();
+    (remoteNewer ? [local.goals||[], remote.goals||[]] : [remote.goals||[], local.goals||[]]).flat()
+      .forEach(g=> goalMap.set(g.id, g)); // second pass overwrites with the preferred copy's version
+    merged.goals = Array.from(goalMap.values());
+
+    // goalLogs: OR per day/goal — a completed check on either device stays completed
+    const glDayKeys = new Set([...Object.keys(local.goalLogs||{}), ...Object.keys(remote.goalLogs||{})]);
+    merged.goalLogs = {};
+    glDayKeys.forEach(day=>{
+      const lLog = (local.goalLogs||{})[day] || {};
+      const rLog = (remote.goalLogs||{})[day] || {};
+      const goalIds = new Set([...Object.keys(lLog), ...Object.keys(rLog)]);
+      const outLog = {};
+      goalIds.forEach(gid=> outLog[gid] = !!lLog[gid] || !!rLog[gid]);
+      merged.goalLogs[day] = outLog;
+    });
+
+    return normalizeData(merged);
   }
 
   // ---------- Cloud Sync (Firebase Firestore) ----------
@@ -608,14 +746,18 @@
       if(snap.metadata.hasPendingWrites) return; // ignore echo of our own writes
       if(!snap.exists) return;
       const remote = snap.data();
-      const remoteTs = remote.lastModified || 0;
-      const localTs = data.lastModified || 0;
-      if(remoteTs > localTs){
-        data = normalizeData(remote);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        renderAll();
-        renderTestsPage();
-        setSyncStatus('Updated from another device ✓', 'ok');
+      const merged = mergeData(data, remote);
+      const changed = JSON.stringify(merged) !== JSON.stringify(data);
+      data = merged;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      renderAll();
+      renderTestsPage();
+      renderBackupsList();
+      if(changed){
+        setSyncStatus('Merged an update from another device ✓', 'ok');
+        pushToCloud(); // push the merged (superset) copy back up so the other device converges too
+      } else {
+        setSyncStatus('Synced just now ✓', 'ok');
       }
     }, err=>{
       setSyncStatus('Sync listener error: ' + err.message, 'err');
@@ -647,17 +789,15 @@
     syncDocRef.get().then(snap=>{
       if(snap.exists){
         const remote = snap.data();
-        const remoteTs = remote.lastModified || 0;
-        const localTs = data.lastModified || 0;
-        if(remoteTs > localTs){
-          data = normalizeData(remote);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-          renderAll();
-          renderTestsPage();
-          setSyncStatus('Connected — pulled the newer copy from the cloud ✓', 'ok');
-        } else {
-          pushToCloud();
-        }
+        const merged = mergeData(data, remote);
+        data = merged;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        pushAutoBackup(data);
+        renderAll();
+        renderTestsPage();
+        renderBackupsList();
+        pushToCloud(); // push the merged copy back so cloud reflects everything from this device too
+        setSyncStatus('Connected — merged with the cloud copy ✓', 'ok');
       } else {
         pushToCloud();
       }
@@ -1587,6 +1727,8 @@
   goalCalViewMonth = now.getMonth();
   renderGoalCalDow();
   renderGoalsPage();
+
+  renderBackupsList();
 
   // resume cloud sync silently if this device already linked before;
   // otherwise pre-fill the config so a NEW device only needs the Sync ID typed in
