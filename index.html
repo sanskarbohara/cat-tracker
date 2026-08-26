@@ -7,8 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     --bg:#0a0a0f;
@@ -180,8 +179,8 @@
   section h2{font-size:14px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim); margin-bottom:12px; font-weight:600;}
 
   #sessionList{list-style:none; display:flex; flex-direction:column; gap:8px;}
-  #sessionList li{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;}
-  #sessionList li .times{color:var(--text-dim);}
+  #sessionList li{display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;}
+  #sessionList li .times{color:var(--text-dim); flex:1;}
   #sessionList li .dur{font-family:'JetBrains Mono',monospace; font-weight:600;}
   .empty-note{color:var(--text-faint); font-size:13px; padding:6px 2px;}
 
@@ -267,6 +266,17 @@
   <section>
     <h2>Today's sessions</h2>
     <ul id="sessionList"></ul>
+    <div style="margin-top:12px;">
+      <button class="detail-toggle" id="manualSessionToggle">+ Log a past session (e.g. lost data, forgot to run the timer)</button>
+      <div id="manualSessionForm" class="hidden" style="margin-top:8px;">
+        <div class="field-row">
+          <div class="field"><label for="manualSessionDate">Date</label><input type="date" id="manualSessionDate"></div>
+          <div class="field"><label for="manualSessionHrs">Hours</label><input type="number" inputmode="decimal" id="manualSessionHrs" min="0" max="16" step="1" value="0"></div>
+          <div class="field"><label for="manualSessionMins">Minutes</label><input type="number" inputmode="decimal" id="manualSessionMins" min="0" max="59" step="1" value="0"></div>
+        </div>
+        <button class="btn primary" id="addManualSessionBtn">Add</button>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -317,13 +327,15 @@
   </section>
 
   <section>
+    <h2>Local backups</h2>
+    <div class="empty-note">Automatic snapshots kept on this device (independent of cloud sync), in case anything ever needs undoing.</div>
+    <div id="backupsList" style="margin-top:10px;"></div>
+  </section>
+
+  <section>
     <h2>Cloud Sync</h2>
-    <div class="empty-note">Optional, one-time setup (~10 min). Once connected, everything saves to your own free Firebase project automatically — no more manual export/import, and it survives a cleared browser or a new device.</div>
+    <div class="empty-note">Once connected, everything saves to your own Supabase project automatically. There's no live background sync — updates only happen when you open the app or tap "Check for updates," so nothing can silently change on a device you're not even looking at.</div>
     <div class="field" style="margin-top:12px;">
-      <label for="fbConfigInput">Firebase config (paste the object from your Firebase project)</label>
-      <textarea id="fbConfigInput" rows="4" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}'></textarea>
-    </div>
-    <div class="field">
       <label for="syncIdInput">Sync ID — save this somewhere safe, it's your key to this data</label>
       <div class="field-row">
         <input type="text" id="syncIdInput" placeholder="tap Generate" style="flex:2;">
@@ -333,9 +345,17 @@
     <div class="btn-row">
       <button class="btn primary" id="connectSyncBtn">Connect</button>
       <button class="btn" id="copySyncIdBtn">Copy Sync ID</button>
+      <button class="btn" id="checkUpdatesBtn">Check for updates</button>
       <button class="btn danger" id="disconnectSyncBtn">Disconnect</button>
     </div>
     <div class="sync-status" id="cloudSyncStatus">Not connected — data is only saved on this device.</div>
+    <div id="conflictButtons" class="hidden" style="margin-top:12px;">
+      <div class="empty-note" id="conflictDetail" style="margin-bottom:8px;"></div>
+      <div class="btn-row">
+        <button class="btn primary" id="useCloudBtn">Use the cloud copy</button>
+        <button class="btn danger" id="useLocalBtn">Keep this device's copy</button>
+      </div>
+    </div>
   </section>
 
   </div><!-- /page-study -->
@@ -511,6 +531,15 @@
     raw.days = (raw.days && typeof raw.days==='object') ? raw.days : {};
     Object.keys(raw.days).forEach(k=>{
       if(!raw.days[k] || !Array.isArray(raw.days[k].sessions)) raw.days[k] = {sessions:[], targetMinutesAtStart: raw.settings.dailyTargetMinutes};
+      raw.days[k].sessions = raw.days[k].sessions
+        .filter(s => s && typeof s==='object' && typeof s.durationSec==='number' && !isNaN(s.durationSec))
+        .map(s => ({
+          id: s.id || ('sess_'+Math.random().toString(36).slice(2,10)),
+          start: s.start || (k+'T12:00:00.000Z'),
+          end: s.end || s.start || (k+'T12:00:00.000Z'),
+          durationSec: s.durationSec,
+          manual: !!s.manual
+        }));
     });
     if(typeof raw.longestEverSec !== 'number' || isNaN(raw.longestEverSec)) raw.longestEverSec = 0;
     if(typeof raw.lastModified !== 'number' || isNaN(raw.lastModified)) raw.lastModified = 0;
@@ -561,28 +590,116 @@
     return normalizeData(raw);
   }
 
+  // Guards against the exact bug that caused a real data-loss incident: on page load,
+  // rendering (e.g. the Goals checklist backfilling today's entries) can trigger a save
+  // before cloud sync has had a chance to fetch and compare against the server copy.
+  // While that first check is in flight, saves still go to localStorage normally, but
+  // the push to Supabase is held back so a stale local copy can never race ahead and
+  // stamp a fresh timestamp over genuinely newer cloud data.
+  let cloudSyncPending = false;
+  let pendingPushAfterSync = false;
+
   function saveData(){
     data.lastModified = Date.now();
+    snapshotBackup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if(cloudSyncPending || pendingCloudConflict){
+      pendingPushAfterSync = true;
+      return;
+    }
     pushToCloud();
   }
 
-  // ---------- Cloud Sync (Firebase Firestore) ----------
-  // Safe to keep public: Firebase web config identifies the project but grants no
-  // access by itself — real access control is the Firestore rules, not this object.
-  // The Sync ID is the real key and is intentionally NOT hardcoded here.
-  const DEFAULT_FIREBASE_CONFIG = {
-    "apiKey": "AIzaSyCny9QPEuMN8XKcmjMqpZFWUBcRm7Q_Anc",
-    "authDomain": "cat-tracker-71ae3.firebaseapp.com",
-    "projectId": "cat-tracker-71ae3",
-    "storageBucket": "cat-tracker-71ae3.firebasestorage.app",
-    "messagingSenderId": "644536580902",
-    "appId": "1:644536580902:web:340a48cd0eec681979dfe7",
-    "measurementId": "G-VVPP9EFKTG"
-  };
+  function cloudSyncSettled(){
+    cloudSyncPending = false;
+    renderGoalsPage();
+    if(pendingPushAfterSync && !pendingCloudConflict){
+      pendingPushAfterSync = false;
+      pushToCloud();
+    }
+  }
 
-  let syncDocRef = null;
-  let unsubscribeSnapshot = null;
+  // ---------- Local safety-net backups (independent of cloud sync) ----------
+  const BACKUP_KEY = 'grindLogBackups';
+  let lastBackupTime = 0;
+
+  function dataRichness(d){
+    if(!d) return 0;
+    const testCount = Array.isArray(d.tests) ? d.tests.length : 0;
+    const dayCount = d.days && typeof d.days==='object' ? Object.keys(d.days).length : 0;
+    const goalLogDays = d.goalLogs && typeof d.goalLogs==='object' ? Object.keys(d.goalLogs).length : 0;
+    return testCount + dayCount + goalLogDays;
+  }
+
+  function snapshotBackup(mode){
+    try{
+      const now = Date.now();
+      if(mode !== 'force' && now - lastBackupTime < 5*60*1000) return; // throttle routine snapshots to once per 5 min
+      lastBackupTime = now;
+      let backups = [];
+      try{ backups = JSON.parse(localStorage.getItem(BACKUP_KEY)) || []; }catch(e){ backups = []; }
+      backups.push({ ts: now, data: JSON.parse(JSON.stringify(data)) });
+      if(backups.length > 12) backups = backups.slice(-12);
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(backups));
+    }catch(e){ /* backups are best-effort and must never block normal saving */ }
+  }
+
+  function renderBackupsList(){
+    const wrap = document.getElementById('backupsList');
+    if(!wrap) return;
+    let backups = [];
+    try{ backups = JSON.parse(localStorage.getItem(BACKUP_KEY)) || []; }catch(e){ backups = []; }
+    if(!backups.length){
+      wrap.innerHTML = '<div class="empty-note">No backups yet — they build up automatically as you use the app.</div>';
+      return;
+    }
+    wrap.innerHTML = backups.slice().reverse().map((b,i)=>{
+      const idx = backups.length - 1 - i;
+      const when = new Date(b.ts).toLocaleString(undefined,{dateStyle:'medium', timeStyle:'short'});
+      const richness = dataRichness(b.data);
+      return `<div class="goal-manage-row">
+        <span class="goal-text">${when} · ${richness} records</span>
+        <button class="restore-backup-btn" data-idx="${idx}">Restore</button>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.restore-backup-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = parseInt(btn.dataset.idx,10);
+        if(!confirm('Restore this backup? Your current data will be backed up first too, so this itself can be undone.')) return;
+        snapshotBackup('force');
+        const backupsNow = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
+        data = normalizeData(backupsNow[idx].data);
+        saveData();
+        renderAll();
+        renderTestsPage();
+        renderGoalsPage();
+        alert('Restored.');
+      });
+    });
+  }
+
+  // ---------- Cloud Sync (Supabase) ----------
+  // Design principle after two real data-loss incidents: NOTHING pulls or overwrites
+  // automatically in the background. There is no live listener. Syncing only ever
+  // happens when this page is open and either loading or the person taps
+  // "Check for updates" - so a background tab can never silently change anything.
+  //
+  // Safe to keep public: the Supabase URL and anon/publishable key identify the
+  // project but grant no access by themselves - real access control is the Postgres
+  // row-level-security policy, scoped to knowing the exact Sync ID (a long random
+  // string that is never committed to the repo).
+  const SUPABASE_URL = 'https://dxyriridthipnnvbrvxs.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_YmUhYO9uVtpC3uIx0WF1hw_nBM5omuR';
+  let sbClient = null;
+  function getSbClient(){
+    if(!sbClient && typeof supabase !== 'undefined'){
+      sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    return sbClient;
+  }
+
+  let currentSyncId = null;
+  let pendingCloudConflict = null;
 
   function setSyncStatus(msg, kind){
     const el = document.getElementById('cloudSyncStatus');
@@ -593,88 +710,141 @@
     if(kind==='err') el.classList.add('err');
   }
 
+  function markSynced(ts){
+    localStorage.setItem('lastSyncedModified', String(ts || 0));
+  }
+
+  // Every save's push also updates the "last agreed with cloud" marker, since a
+  // successful push means this device's local state now matches the cloud exactly.
   function pushToCloud(){
-    if(!syncDocRef) return;
-    syncDocRef.set(data).then(()=>{
+    if(!currentSyncId) return Promise.resolve();
+    const client = getSbClient();
+    if(!client) return Promise.resolve();
+    return client.from('study_data').upsert({
+      sync_id: currentSyncId,
+      data: data,
+      last_modified: data.lastModified,
+      updated_at: new Date().toISOString()
+    }).then(({error})=>{
+      if(error) throw error;
+      markSynced(data.lastModified);
       setSyncStatus('Synced just now ✓', 'ok');
     }).catch(err=>{
       setSyncStatus('Sync failed: ' + err.message, 'err');
     });
   }
 
-  function attachSnapshotListener(){
-    if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
-    unsubscribeSnapshot = syncDocRef.onSnapshot(snap=>{
-      if(snap.metadata.hasPendingWrites) return; // ignore echo of our own writes
-      if(!snap.exists) return;
-      const remote = snap.data();
-      const remoteTs = remote.lastModified || 0;
-      const localTs = data.lastModified || 0;
-      if(remoteTs > localTs){
-        data = normalizeData(remote);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        renderAll();
-        renderTestsPage();
-        setSyncStatus('Updated from another device ✓', 'ok');
-      }
-    }, err=>{
-      setSyncStatus('Sync listener error: ' + err.message, 'err');
-    });
+  function applyRemote(remoteBlob, remoteTs){
+    data = normalizeData(remoteBlob);
+    if(typeof data.lastModified !== 'number' || data.lastModified <= 0) data.lastModified = remoteTs || 0;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    markSynced(data.lastModified);
+    renderAll();
+    renderTestsPage();
+    renderGoalsPage();
   }
 
-  function connectCloud(configStr, syncId, opts){
+  function showConflictButtons(show){
+    const el = document.getElementById('conflictButtons');
+    if(el) el.classList.toggle('hidden', !show);
+  }
+
+  // The core safety logic. Rather than trusting "whoever has the bigger timestamp",
+  // this tracks whether THIS device has made any changes since it last confirmed
+  // agreement with the cloud, and whether the cloud has moved since that same point.
+  // Only when this device has nothing unsynced to lose does anything auto-apply.
+  async function reconcile(syncId, opts){
     opts = opts || {};
-    if(typeof firebase === 'undefined'){
+    if(typeof supabase === 'undefined'){
       if(!opts.silent) setSyncStatus('Cloud library failed to load — check your internet connection and reload the page.', 'err');
+      cloudSyncSettled();
       return;
     }
-    let config;
-    try{ config = JSON.parse(configStr); }
-    catch(e){ if(!opts.silent) alert("That doesn't look like valid Firebase config JSON. Paste the whole {...} object from your Firebase project settings."); return; }
-    if(!syncId){ if(!opts.silent) alert('Enter or generate a Sync ID first.'); return; }
+    if(!syncId){
+      if(!opts.silent) alert('Enter or generate a Sync ID first.');
+      cloudSyncSettled();
+      return;
+    }
+
+    currentSyncId = syncId;
+    const client = getSbClient();
+    setSyncStatus('Connecting…');
+    showConflictButtons(false);
 
     try{
-      if(!firebase.apps.length){ firebase.initializeApp(config); }
-      const db = firebase.firestore();
-      syncDocRef = db.collection('studyData').doc(syncId);
-    }catch(e){
-      setSyncStatus('Could not connect: ' + e.message, 'err');
-      syncDocRef = null;
-      return;
-    }
+      const { data: row, error } = await client
+        .from('study_data')
+        .select('data,last_modified')
+        .eq('sync_id', syncId)
+        .maybeSingle();
+      if(error) throw error;
 
-    setSyncStatus('Connecting…');
-    syncDocRef.get().then(snap=>{
-      if(snap.exists){
-        const remote = snap.data();
-        const remoteTs = remote.lastModified || 0;
-        const localTs = data.lastModified || 0;
-        if(remoteTs > localTs){
-          data = normalizeData(remote);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-          renderAll();
-          renderTestsPage();
-          setSyncStatus('Connected — pulled the newer copy from the cloud ✓', 'ok');
-        } else {
-          pushToCloud();
-        }
+      if(!row){
+        // nothing saved under this Sync ID yet - push this device's copy to create it
+        await pushToCloud();
+        setSyncStatus("Connected — this Sync ID had no data yet, pushed this device's copy ✓", 'ok');
       } else {
-        pushToCloud();
+        const remote = row.data;
+        const remoteTs = row.last_modified || 0;
+        const lastSynced = parseInt(localStorage.getItem('lastSyncedModified') || '0', 10);
+        const localTs = data.lastModified || 0;
+        const localDirty = localTs !== lastSynced;
+        const cloudMoved = remoteTs !== lastSynced;
+
+        if(!localDirty && !cloudMoved){
+          setSyncStatus('Connected — already in sync ✓', 'ok');
+        } else if(!localDirty && cloudMoved){
+          // safe: this device has no unsynced changes of its own to lose
+          snapshotBackup('force');
+          applyRemote(remote, remoteTs);
+          setSyncStatus('Connected — pulled the newer copy from the cloud ✓', 'ok');
+        } else if(localDirty && !cloudMoved){
+          // safe: cloud hasn't moved since we last agreed, only this device has new stuff
+          await pushToCloud();
+          setSyncStatus("Connected — pushed this device's changes ✓", 'ok');
+        } else {
+          // both sides changed since they last agreed - genuine conflict, ask explicitly
+          pendingCloudConflict = { data: remote, last_modified: remoteTs };
+          const localRichness = dataRichness(data);
+          const remoteRichness = dataRichness(remote);
+          const localWhen = localTs ? new Date(localTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
+          const remoteWhen = remoteTs ? new Date(remoteTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
+          const detailEl = document.getElementById('conflictDetail');
+          if(detailEl) detailEl.textContent =
+            `Both this device and the cloud have changes since they last matched. This device: ${localRichness} records, last saved ${localWhen}. Cloud: ${remoteRichness} records, last saved ${remoteWhen}. Pick which to keep — the other side will be overwritten.`;
+          setSyncStatus('Changes on both sides — pick which to keep below.', 'err');
+          showConflictButtons(true);
+        }
       }
-      attachSnapshotListener();
-      localStorage.setItem('fbConfig', configStr);
       localStorage.setItem('syncId', syncId);
-    }).catch(err=>{
-      syncDocRef = null;
-      setSyncStatus('Could not reach Firestore: ' + err.message + ' — double check your config and Firestore rules.', 'err');
-    });
+    }catch(err){
+      setSyncStatus('Could not reach Supabase: ' + err.message + ' — double check your connection.', 'err');
+    }
+    cloudSyncSettled();
   }
 
+  document.getElementById('useCloudBtn').addEventListener('click', ()=>{
+    if(!pendingCloudConflict) return;
+    snapshotBackup('force');
+    applyRemote(pendingCloudConflict.data, pendingCloudConflict.last_modified);
+    setSyncStatus('Switched to the cloud copy ✓', 'ok');
+    showConflictButtons(false);
+    pendingCloudConflict = null;
+    pendingPushAfterSync = false;
+  });
+  document.getElementById('useLocalBtn').addEventListener('click', ()=>{
+    if(confirm("This overwrites the cloud copy with what's on this device. Continue?")){
+      pendingCloudConflict = null;
+      pendingPushAfterSync = false;
+      pushToCloud();
+      showConflictButtons(false);
+    }
+  });
+
   function disconnectCloud(){
-    if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
-    syncDocRef = null;
-    localStorage.removeItem('fbConfig');
+    currentSyncId = null;
     localStorage.removeItem('syncId');
+    localStorage.removeItem('lastSyncedModified');
     setSyncStatus('Disconnected — data is only saved on this device.');
   }
 
@@ -688,7 +858,12 @@
     document.getElementById('syncIdInput').value = randomSyncId();
   });
   document.getElementById('connectSyncBtn').addEventListener('click', ()=>{
-    connectCloud(document.getElementById('fbConfigInput').value.trim(), document.getElementById('syncIdInput').value.trim());
+    reconcile(document.getElementById('syncIdInput').value.trim());
+  });
+  document.getElementById('checkUpdatesBtn').addEventListener('click', ()=>{
+    const id = document.getElementById('syncIdInput').value.trim();
+    if(!id){ alert('Connect first.'); return; }
+    reconcile(id);
   });
   document.getElementById('copySyncIdBtn').addEventListener('click', ()=>{
     const v = document.getElementById('syncIdInput').value.trim();
@@ -802,7 +977,7 @@
 
       const key = dateKey(new Date(startIso));
       if(!data.days[key]) data.days[key] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
-      data.days[key].sessions.push({start:startIso, end:endIso, durationSec});
+      data.days[key].sessions.push({id: 'sess_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), start:startIso, end:endIso, durationSec, manual:false});
       if(durationSec > data.longestEverSec) data.longestEverSec = durationSec;
       data.activeSession = null;
       clearInterval(tickInterval); tickInterval = null;
@@ -835,10 +1010,48 @@
     }
     sessions.slice().reverse().forEach(s=>{
       const li = document.createElement('li');
-      li.innerHTML = `<span class="times">${fmtTime(s.start)} – ${fmtTime(s.end)}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span>`;
+      const label = s.manual ? 'Manually added' : `${fmtTime(s.start)} – ${fmtTime(s.end)}`;
+      li.innerHTML = `<span class="times">${label}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span><button class="del-btn" data-session-id="${s.id}" aria-label="Delete session">✕</button>`;
       ul.appendChild(li);
     });
+    ul.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deleteSession(todayKey(), btn.dataset.sessionId));
+    });
   }
+
+  function deleteSession(dateKeyStr, sessionId){
+    if(!confirm('Delete this session?')) return;
+    const day = data.days[dateKeyStr];
+    if(!day) return;
+    day.sessions = day.sessions.filter(s=>s.id!==sessionId);
+    saveData();
+    renderAll();
+  }
+
+  document.getElementById('manualSessionToggle').addEventListener('click', ()=>{
+    const form = document.getElementById('manualSessionForm');
+    const nowHidden = form.classList.toggle('hidden');
+    if(!nowHidden) document.getElementById('manualSessionDate').value = todayKey();
+  });
+  document.getElementById('addManualSessionBtn').addEventListener('click', ()=>{
+    const dateVal = document.getElementById('manualSessionDate').value || todayKey();
+    const hrs = parseFloat(document.getElementById('manualSessionHrs').value) || 0;
+    const mins = parseFloat(document.getElementById('manualSessionMins').value) || 0;
+    const durationSec = Math.round((hrs*60 + mins) * 60);
+    if(durationSec <= 0){ alert('Enter a duration greater than 0.'); return; }
+    if(!data.days[dateVal]) data.days[dateVal] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
+    const anchor = dateVal + 'T12:00:00.000Z';
+    data.days[dateVal].sessions.push({
+      id: 'sess_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      start: anchor, end: anchor, durationSec, manual: true
+    });
+    if(durationSec > data.longestEverSec) data.longestEverSec = durationSec;
+    saveData();
+    document.getElementById('manualSessionHrs').value = '0';
+    document.getElementById('manualSessionMins').value = '0';
+    document.getElementById('manualSessionForm').classList.add('hidden');
+    renderAll();
+  });
 
   // ---------- Stats ----------
   function computeStreak(){
@@ -933,15 +1146,19 @@
     if(!dayObj || !dayObj.sessions.length){
       html += '<div class="empty-note">No sessions logged this day.</div>';
     } else {
-      html += '<ul id="ddList">' + dayObj.sessions.map(s=>
-        `<li><span class="times">${fmtTime(s.start)} – ${fmtTime(s.end)}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span></li>`
-      ).join('') + '</ul>';
+      html += '<ul id="ddList">' + dayObj.sessions.map(s=>{
+        const label = s.manual ? 'Manually added' : `${fmtTime(s.start)} – ${fmtTime(s.end)}`;
+        return `<li><span class="times">${label}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span><button class="del-btn" data-session-id="${s.id}" aria-label="Delete session">✕</button></li>`;
+      }).join('') + '</ul>';
     }
     panel.innerHTML = html;
     if(dayObj && dayObj.sessions && dayObj.sessions.length){
       panel.querySelector('#ddList').style.cssText = 'list-style:none; display:flex; flex-direction:column; gap:8px;';
       panel.querySelectorAll('#ddList li').forEach(li=>{
-        li.style.cssText = 'display:flex; justify-content:space-between; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;';
+        li.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; padding:8px 10px; background:var(--surface-2); border-radius:8px;';
+      });
+      panel.querySelectorAll('.del-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=> deleteSession(selectedDateKey, btn.dataset.sessionId));
       });
     }
   }
@@ -1013,6 +1230,7 @@
           selectedDateKey = null;
           renderAll();
           renderTestsPage();
+          renderGoalsPage();
         }
       }catch(err){ alert('Could not read that file. Make sure it is a Grind Log backup JSON.'); }
       e.target.value = '';
@@ -1572,6 +1790,7 @@
     renderCalendar();
     renderDayDetail();
     renderTargetSection();
+    renderBackupsList();
     document.getElementById('catDateInput').value = data.settings.catDate;
   }
 
@@ -1586,18 +1805,17 @@
   goalCalViewYear = now.getFullYear();
   goalCalViewMonth = now.getMonth();
   renderGoalCalDow();
-  renderGoalsPage();
 
-  // resume cloud sync silently if this device already linked before;
-  // otherwise pre-fill the config so a NEW device only needs the Sync ID typed in
-  const savedFbConfig = localStorage.getItem('fbConfig');
+  // resume cloud sync silently if this device already linked before
   const savedSyncId = localStorage.getItem('syncId');
-  if(savedFbConfig && savedSyncId){
-    document.getElementById('fbConfigInput').value = savedFbConfig;
+  if(savedSyncId){
     document.getElementById('syncIdInput').value = savedSyncId;
-    setTimeout(()=> connectCloud(savedFbConfig, savedSyncId, {silent:true}), 300);
+    // Goals rendering (and the checklist backfill-save it can trigger) is deliberately
+    // held off until reconcile() finishes — see cloudSyncSettled().
+    cloudSyncPending = true;
+    reconcile(savedSyncId, {silent:true});
   } else {
-    document.getElementById('fbConfigInput').value = JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
+    renderGoalsPage(); // no cloud sync configured on this device - nothing to race against
   }
 
   // keep countdown/date fresh if left open across midnight
