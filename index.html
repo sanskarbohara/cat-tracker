@@ -334,7 +334,7 @@
 
   <section>
     <h2>Cloud Sync</h2>
-    <div class="empty-note">Once connected, everything saves to your own Supabase project automatically. There's no live background sync — updates only happen when you open the app or tap "Check for updates," so nothing can silently change on a device you're not even looking at.</div>
+    <div class="empty-note">Fully manual, on purpose — nothing ever syncs by itself, in the background, or on page load. Your data always saves to this device instantly. Tap "Sync now" only when you actually want to send or receive updates, e.g. right before switching devices.</div>
     <div class="field" style="margin-top:12px;">
       <label for="syncIdInput">Sync ID — save this somewhere safe, it's your key to this data</label>
       <div class="field-row">
@@ -343,12 +343,11 @@
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn primary" id="connectSyncBtn">Connect</button>
+      <button class="btn primary" id="syncNowBtn">Sync now</button>
       <button class="btn" id="copySyncIdBtn">Copy Sync ID</button>
-      <button class="btn" id="checkUpdatesBtn">Check for updates</button>
-      <button class="btn danger" id="disconnectSyncBtn">Disconnect</button>
+      <button class="btn danger" id="disconnectSyncBtn">Forget Sync ID</button>
     </div>
-    <div class="sync-status" id="cloudSyncStatus">Not connected — data is only saved on this device.</div>
+    <div class="sync-status" id="cloudSyncStatus">No Sync ID saved on this device yet.</div>
     <div id="conflictButtons" class="hidden" style="margin-top:12px;">
       <div class="empty-note" id="conflictDetail" style="margin-bottom:8px;"></div>
       <div class="btn-row">
@@ -590,33 +589,15 @@
     return normalizeData(raw);
   }
 
-  // Guards against the exact bug that caused a real data-loss incident: on page load,
-  // rendering (e.g. the Goals checklist backfilling today's entries) can trigger a save
-  // before cloud sync has had a chance to fetch and compare against the server copy.
-  // While that first check is in flight, saves still go to localStorage normally, but
-  // the push to Supabase is held back so a stale local copy can never race ahead and
-  // stamp a fresh timestamp over genuinely newer cloud data.
-  let cloudSyncPending = false;
-  let pendingPushAfterSync = false;
-
+  // saveData is deliberately local-only. Nothing about saving ever touches the
+  // network — the only way data reaches or leaves the cloud is the "Sync now"
+  // button, tapped explicitly. This is what makes the whole system simple to
+  // reason about: your local save always succeeds instantly, and cloud sync
+  // can never interfere with it, race it, or silently overwrite it.
   function saveData(){
     data.lastModified = Date.now();
     snapshotBackup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if(cloudSyncPending || pendingCloudConflict){
-      pendingPushAfterSync = true;
-      return;
-    }
-    pushToCloud();
-  }
-
-  function cloudSyncSettled(){
-    cloudSyncPending = false;
-    renderGoalsPage();
-    if(pendingPushAfterSync && !pendingCloudConflict){
-      pendingPushAfterSync = false;
-      pushToCloud();
-    }
   }
 
   // ---------- Local safety-net backups (independent of cloud sync) ----------
@@ -670,6 +651,10 @@
         const backupsNow = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
         data = normalizeData(backupsNow[idx].data);
         saveData();
+        // Same reasoning as Reset/Import: restoring an older backup is a wholesale
+        // replacement, so force the next sync to ask explicitly rather than risk it
+        // auto-pushing this (possibly older/less-rich) state over the cloud copy.
+        localStorage.removeItem('lastSyncedModified');
         renderAll();
         renderTestsPage();
         renderGoalsPage();
@@ -753,22 +738,19 @@
   // this tracks whether THIS device has made any changes since it last confirmed
   // agreement with the cloud, and whether the cloud has moved since that same point.
   // Only when this device has nothing unsynced to lose does anything auto-apply.
-  async function reconcile(syncId, opts){
-    opts = opts || {};
+  async function reconcile(syncId){
     if(typeof supabase === 'undefined'){
-      if(!opts.silent) setSyncStatus('Cloud library failed to load — check your internet connection and reload the page.', 'err');
-      cloudSyncSettled();
+      setSyncStatus('Cloud library failed to load — check your internet connection and reload the page.', 'err');
       return;
     }
     if(!syncId){
-      if(!opts.silent) alert('Enter or generate a Sync ID first.');
-      cloudSyncSettled();
+      alert('Enter or generate a Sync ID first.');
       return;
     }
 
     currentSyncId = syncId;
     const client = getSbClient();
-    setSyncStatus('Connecting…');
+    setSyncStatus('Syncing…');
     showConflictButtons(false);
 
     try{
@@ -782,7 +764,7 @@
       if(!row){
         // nothing saved under this Sync ID yet - push this device's copy to create it
         await pushToCloud();
-        setSyncStatus("Connected — this Sync ID had no data yet, pushed this device's copy ✓", 'ok');
+        setSyncStatus("Synced — this Sync ID had no data yet, pushed this device's copy ✓", 'ok');
       } else {
         const remote = row.data;
         const remoteTs = row.last_modified || 0;
@@ -792,16 +774,16 @@
         const cloudMoved = remoteTs !== lastSynced;
 
         if(!localDirty && !cloudMoved){
-          setSyncStatus('Connected — already in sync ✓', 'ok');
+          setSyncStatus('Already in sync ✓', 'ok');
         } else if(!localDirty && cloudMoved){
           // safe: this device has no unsynced changes of its own to lose
           snapshotBackup('force');
           applyRemote(remote, remoteTs);
-          setSyncStatus('Connected — pulled the newer copy from the cloud ✓', 'ok');
+          setSyncStatus('Pulled the newer copy from the cloud ✓', 'ok');
         } else if(localDirty && !cloudMoved){
           // safe: cloud hasn't moved since we last agreed, only this device has new stuff
           await pushToCloud();
-          setSyncStatus("Connected — pushed this device's changes ✓", 'ok');
+          setSyncStatus("Pushed this device's changes to the cloud ✓", 'ok');
         } else {
           // both sides changed since they last agreed - genuine conflict, ask explicitly
           pendingCloudConflict = { data: remote, last_modified: remoteTs };
@@ -820,7 +802,6 @@
     }catch(err){
       setSyncStatus('Could not reach Supabase: ' + err.message + ' — double check your connection.', 'err');
     }
-    cloudSyncSettled();
   }
 
   document.getElementById('useCloudBtn').addEventListener('click', ()=>{
@@ -830,12 +811,10 @@
     setSyncStatus('Switched to the cloud copy ✓', 'ok');
     showConflictButtons(false);
     pendingCloudConflict = null;
-    pendingPushAfterSync = false;
   });
   document.getElementById('useLocalBtn').addEventListener('click', ()=>{
     if(confirm("This overwrites the cloud copy with what's on this device. Continue?")){
       pendingCloudConflict = null;
-      pendingPushAfterSync = false;
       pushToCloud();
       showConflictButtons(false);
     }
@@ -845,7 +824,8 @@
     currentSyncId = null;
     localStorage.removeItem('syncId');
     localStorage.removeItem('lastSyncedModified');
-    setSyncStatus('Disconnected — data is only saved on this device.');
+    document.getElementById('syncIdInput').value = '';
+    setSyncStatus('No Sync ID saved on this device yet.');
   }
 
   function randomSyncId(){
@@ -857,13 +837,8 @@
   document.getElementById('genSyncIdBtn').addEventListener('click', ()=>{
     document.getElementById('syncIdInput').value = randomSyncId();
   });
-  document.getElementById('connectSyncBtn').addEventListener('click', ()=>{
+  document.getElementById('syncNowBtn').addEventListener('click', ()=>{
     reconcile(document.getElementById('syncIdInput').value.trim());
-  });
-  document.getElementById('checkUpdatesBtn').addEventListener('click', ()=>{
-    const id = document.getElementById('syncIdInput').value.trim();
-    if(!id){ alert('Connect first.'); return; }
-    reconcile(id);
   });
   document.getElementById('copySyncIdBtn').addEventListener('click', ()=>{
     const v = document.getElementById('syncIdInput').value.trim();
@@ -876,7 +851,7 @@
     }
   });
   document.getElementById('disconnectSyncBtn').addEventListener('click', ()=>{
-    if(confirm('Disconnect cloud sync? Your data stays on this device, it just stops syncing.')) disconnectCloud();
+    if(confirm("Forget this Sync ID on this device? Your data stays exactly as it is here — this just stops linking it to the cloud copy until you enter a Sync ID again.")) disconnectCloud();
   });
 
   let data = loadData();
@@ -1227,6 +1202,10 @@
         if(confirm('Import will overwrite current data in this browser. Continue?')){
           data = normalizeData(parsed);
           saveData();
+          // Same reasoning as Reset: an import is a wholesale replacement, so clear the
+          // sync checkpoint too - the next "Sync now" must ask explicitly, never auto-push
+          // an imported backup over whatever's actually in the cloud.
+          localStorage.removeItem('lastSyncedModified');
           selectedDateKey = null;
           renderAll();
           renderTestsPage();
@@ -1238,14 +1217,20 @@
     reader.readAsText(file);
   });
   document.getElementById('resetBtn').addEventListener('click', ()=>{
-    if(confirm('This will permanently erase all logged study data in this browser (and in cloud sync, if connected). Continue?')){
+    if(confirm('This will permanently erase all logged study data on THIS DEVICE. Continue?')){
       if(confirm('Really sure? This cannot be undone.')){
         localStorage.removeItem(STORAGE_KEY);
+        // Clear the sync checkpoint too, so this reset can NEVER quietly reach the cloud
+        // later. Without a matching checkpoint, the next "Sync now" is forced to show the
+        // conflict picker and make you explicitly choose - it can't auto-push a wipe.
+        localStorage.removeItem('lastSyncedModified');
         data = loadData();
         selectedDateKey = null;
-        saveData(); // also pushes the now-empty state to the cloud, if connected
+        saveData(); // local only - never touches the cloud by itself
         renderAll();
         renderTestsPage();
+        renderGoalsPage();
+        setSyncStatus(localStorage.getItem('syncId') ? 'Reset locally. Tap "Sync now" if you want to reconcile this with the cloud copy — you\'ll be asked to choose.' : 'No Sync ID saved on this device yet.');
       }
     }
   });
@@ -1595,7 +1580,12 @@
     goals.forEach(g=>{
       if(!(g.id in data.goalLogs[key])){ data.goalLogs[key][g.id] = false; backfilled = true; }
     });
-    if(backfilled) saveData();
+    if(backfilled){
+      // Persist locally, but deliberately don't call saveData()/bump lastModified here -
+      // filling in explicit "not done yet" defaults isn't a real change the person made,
+      // and shouldn't make this device look "dirty" the next time it syncs.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
     const todayLog = data.goalLogs[key];
 
     if(!goals.length){
@@ -1805,17 +1795,14 @@
   goalCalViewYear = now.getFullYear();
   goalCalViewMonth = now.getMonth();
   renderGoalCalDow();
+  renderGoalsPage(); // always safe now - nothing automatic ever touches the network on load
 
-  // resume cloud sync silently if this device already linked before
+  // Just show whether a Sync ID is already saved on this device. No network call happens
+  // here at all - syncing only ever runs when "Sync now" is tapped, explicitly.
   const savedSyncId = localStorage.getItem('syncId');
   if(savedSyncId){
     document.getElementById('syncIdInput').value = savedSyncId;
-    // Goals rendering (and the checklist backfill-save it can trigger) is deliberately
-    // held off until reconcile() finishes — see cloudSyncSettled().
-    cloudSyncPending = true;
-    reconcile(savedSyncId, {silent:true});
-  } else {
-    renderGoalsPage(); // no cloud sync configured on this device - nothing to race against
+    setSyncStatus(`Linked to a Sync ID on this device — tap "Sync now" to send or receive updates.`);
   }
 
   // keep countdown/date fresh if left open across midnight
