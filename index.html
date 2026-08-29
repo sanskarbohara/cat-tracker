@@ -597,7 +597,11 @@
   function saveData(){
     data.lastModified = Date.now();
     snapshotBackup();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }catch(e){
+      alert("Couldn't save that change — your browser's storage may be full. Please export a backup right now (Settings → Export backup) before doing anything else, since this last change may not be saved.");
+    }
   }
 
   // ---------- Local safety-net backups (independent of cloud sync) ----------
@@ -655,6 +659,8 @@
         // replacement, so force the next sync to ask explicitly rather than risk it
         // auto-pushing this (possibly older/less-rich) state over the cloud copy.
         localStorage.removeItem('lastSyncedModified');
+        localStorage.removeItem('lastSyncedVersion');
+        lastKnownVersion = 0;
         renderAll();
         renderTestsPage();
         renderGoalsPage();
@@ -695,35 +701,63 @@
     if(kind==='err') el.classList.add('err');
   }
 
-  function markSynced(ts){
+  let lastKnownVersion = parseInt(localStorage.getItem('lastSyncedVersion') || '0', 10);
+
+  function markSynced(ts, version){
     localStorage.setItem('lastSyncedModified', String(ts || 0));
+    if(version !== undefined && version !== null){
+      lastKnownVersion = version;
+      localStorage.setItem('lastSyncedVersion', String(version));
+    }
   }
 
-  // Every save's push also updates the "last agreed with cloud" marker, since a
-  // successful push means this device's local state now matches the cloud exactly.
-  function pushToCloud(){
-    if(!currentSyncId) return Promise.resolve();
+  // Pushes using optimistic concurrency: the write only lands if nobody else has
+  // changed the row since this device last saw it. If two devices somehow tap "Sync
+  // now" at the exact same moment, only one write can win - the other is refused
+  // outright (never silently overwritten or silently discarded) and told to sync again.
+  async function pushToCloud(){
+    if(!currentSyncId) return false;
     const client = getSbClient();
-    if(!client) return Promise.resolve();
-    return client.from('study_data').upsert({
-      sync_id: currentSyncId,
-      data: data,
-      last_modified: data.lastModified,
-      updated_at: new Date().toISOString()
-    }).then(({error})=>{
+    if(!client) return false;
+    try{
+      if(lastKnownVersion === 0){
+        // Brand new Sync ID, or this device has never confirmed a version before.
+        // Try to create the row outright first.
+        const { error: insertErr } = await client.from('study_data').insert({
+          sync_id: currentSyncId, data: data, last_modified: data.lastModified,
+          updated_at: new Date().toISOString(), version: 1
+        });
+        if(!insertErr){
+          markSynced(data.lastModified, 1);
+          return true;
+        }
+        // A row already exists under this Sync ID - fall through to the conditional
+        // update below, still guarded against version 0 in case that's genuinely current.
+      }
+      const newVersion = lastKnownVersion + 1;
+      const { data: updatedRows, error } = await client.from('study_data')
+        .update({ data: data, last_modified: data.lastModified, updated_at: new Date().toISOString(), version: newVersion })
+        .eq('sync_id', currentSyncId)
+        .eq('version', lastKnownVersion)
+        .select();
       if(error) throw error;
-      markSynced(data.lastModified);
-      setSyncStatus('Synced just now ✓', 'ok');
-    }).catch(err=>{
+      if(!updatedRows || updatedRows.length === 0){
+        setSyncStatus('Another device just synced at the same moment — tap Sync now again to reconcile safely.', 'err');
+        return false;
+      }
+      markSynced(data.lastModified, newVersion);
+      return true;
+    }catch(err){
       setSyncStatus('Sync failed: ' + err.message, 'err');
-    });
+      return false;
+    }
   }
 
-  function applyRemote(remoteBlob, remoteTs){
+  function applyRemote(remoteBlob, remoteTs, remoteVersion){
     data = normalizeData(remoteBlob);
     if(typeof data.lastModified !== 'number' || data.lastModified <= 0) data.lastModified = remoteTs || 0;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    markSynced(data.lastModified);
+    markSynced(data.lastModified, remoteVersion);
     renderAll();
     renderTestsPage();
     renderGoalsPage();
@@ -738,7 +772,13 @@
   // this tracks whether THIS device has made any changes since it last confirmed
   // agreement with the cloud, and whether the cloud has moved since that same point.
   // Only when this device has nothing unsynced to lose does anything auto-apply.
+  let syncInProgress = false;
+
   async function reconcile(syncId){
+    if(syncInProgress){
+      setSyncStatus('Already syncing — wait for that to finish first.', 'err');
+      return;
+    }
     if(typeof supabase === 'undefined'){
       setSyncStatus('Cloud library failed to load — check your internet connection and reload the page.', 'err');
       return;
@@ -748,6 +788,9 @@
       return;
     }
 
+    syncInProgress = true;
+    const syncBtn = document.getElementById('syncNowBtn');
+    if(syncBtn) syncBtn.disabled = true;
     currentSyncId = syncId;
     const client = getSbClient();
     setSyncStatus('Syncing…');
@@ -756,16 +799,18 @@
     try{
       const { data: row, error } = await client
         .from('study_data')
-        .select('data,last_modified')
+        .select('data,last_modified,version')
         .eq('sync_id', syncId)
         .maybeSingle();
       if(error) throw error;
 
       if(!row){
         // nothing saved under this Sync ID yet - push this device's copy to create it
-        await pushToCloud();
-        setSyncStatus("Synced — this Sync ID had no data yet, pushed this device's copy ✓", 'ok');
+        lastKnownVersion = 0;
+        const ok = await pushToCloud();
+        if(ok) setSyncStatus("Synced — this Sync ID had no data yet, pushed this device's copy ✓", 'ok');
       } else {
+        lastKnownVersion = row.version || 0; // always refresh to what the cloud actually holds right now
         const remote = row.data;
         const remoteTs = row.last_modified || 0;
         const lastSynced = parseInt(localStorage.getItem('lastSyncedModified') || '0', 10);
@@ -775,18 +820,24 @@
 
         if(!localDirty && !cloudMoved){
           setSyncStatus('Already in sync ✓', 'ok');
+          markSynced(localTs, lastKnownVersion);
         } else if(!localDirty && cloudMoved){
           // safe: this device has no unsynced changes of its own to lose
           snapshotBackup('force');
-          applyRemote(remote, remoteTs);
+          applyRemote(remote, remoteTs, row.version || 0);
           setSyncStatus('Pulled the newer copy from the cloud ✓', 'ok');
         } else if(localDirty && !cloudMoved){
           // safe: cloud hasn't moved since we last agreed, only this device has new stuff
-          await pushToCloud();
-          setSyncStatus("Pushed this device's changes to the cloud ✓", 'ok');
+          const ok = await pushToCloud();
+          if(ok){
+            setSyncStatus("Pushed this device's changes to the cloud ✓", 'ok');
+          } else {
+            // pushToCloud already set a specific status (version race or network error) -
+            // do NOT overwrite it with a false claim of success
+          }
         } else {
           // both sides changed since they last agreed - genuine conflict, ask explicitly
-          pendingCloudConflict = { data: remote, last_modified: remoteTs };
+          pendingCloudConflict = { data: remote, last_modified: remoteTs, version: row.version || 0 };
           const localRichness = dataRichness(data);
           const remoteRichness = dataRichness(remote);
           const localWhen = localTs ? new Date(localTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
@@ -802,28 +853,37 @@
     }catch(err){
       setSyncStatus('Could not reach Supabase: ' + err.message + ' — double check your connection.', 'err');
     }
+    syncInProgress = false;
+    if(syncBtn) syncBtn.disabled = false;
   }
 
   document.getElementById('useCloudBtn').addEventListener('click', ()=>{
     if(!pendingCloudConflict) return;
     snapshotBackup('force');
-    applyRemote(pendingCloudConflict.data, pendingCloudConflict.last_modified);
+    applyRemote(pendingCloudConflict.data, pendingCloudConflict.last_modified, pendingCloudConflict.version);
     setSyncStatus('Switched to the cloud copy ✓', 'ok');
     showConflictButtons(false);
     pendingCloudConflict = null;
   });
-  document.getElementById('useLocalBtn').addEventListener('click', ()=>{
+  document.getElementById('useLocalBtn').addEventListener('click', async ()=>{
     if(confirm("This overwrites the cloud copy with what's on this device. Continue?")){
+      // use the version we just saw when the conflict was detected, so the push is
+      // still safely conditional rather than blind
+      lastKnownVersion = pendingCloudConflict ? (pendingCloudConflict.version || 0) : lastKnownVersion;
       pendingCloudConflict = null;
-      pushToCloud();
       showConflictButtons(false);
+      const ok = await pushToCloud();
+      if(ok) setSyncStatus("This device's copy is now the cloud copy ✓", 'ok');
+      // if it failed, pushToCloud already set a specific, accurate status message
     }
   });
 
   function disconnectCloud(){
     currentSyncId = null;
+    lastKnownVersion = 0;
     localStorage.removeItem('syncId');
     localStorage.removeItem('lastSyncedModified');
+    localStorage.removeItem('lastSyncedVersion');
     document.getElementById('syncIdInput').value = '';
     setSyncStatus('No Sync ID saved on this device yet.');
   }
@@ -1206,6 +1266,8 @@
           // sync checkpoint too - the next "Sync now" must ask explicitly, never auto-push
           // an imported backup over whatever's actually in the cloud.
           localStorage.removeItem('lastSyncedModified');
+          localStorage.removeItem('lastSyncedVersion');
+          lastKnownVersion = 0;
           selectedDateKey = null;
           renderAll();
           renderTestsPage();
@@ -1224,6 +1286,8 @@
         // later. Without a matching checkpoint, the next "Sync now" is forced to show the
         // conflict picker and make you explicitly choose - it can't auto-push a wipe.
         localStorage.removeItem('lastSyncedModified');
+        localStorage.removeItem('lastSyncedVersion');
+        lastKnownVersion = 0;
         data = loadData();
         selectedDateKey = null;
         saveData(); // local only - never touches the cloud by itself
