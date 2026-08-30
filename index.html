@@ -540,7 +540,15 @@
           manual: !!s.manual
         }));
     });
-    if(typeof raw.longestEverSec !== 'number' || isNaN(raw.longestEverSec)) raw.longestEverSec = 0;
+    // Derived, not trusted from storage - a stored value can go stale (e.g. after
+    // deleting the very session that had set the record), so recompute it from the
+    // actual sessions every time rather than carrying forward a number that could
+    // no longer correspond to anything that still exists.
+    let derivedLongest = 0;
+    Object.values(raw.days).forEach(day=>{
+      (day.sessions||[]).forEach(s=>{ if(s.durationSec > derivedLongest) derivedLongest = s.durationSec; });
+    });
+    raw.longestEverSec = derivedLongest;
     if(typeof raw.lastModified !== 'number' || isNaN(raw.lastModified)) raw.lastModified = 0;
     raw.tests = Array.isArray(raw.tests)
       ? raw.tests
@@ -1059,6 +1067,11 @@
     const day = data.days[dateKeyStr];
     if(!day) return;
     day.sessions = day.sessions.filter(s=>s.id!==sessionId);
+    let recalculated = 0;
+    Object.values(data.days).forEach(d=>{
+      (d.sessions||[]).forEach(s=>{ if(s.durationSec > recalculated) recalculated = s.durationSec; });
+    });
+    data.longestEverSec = recalculated;
     saveData();
     renderAll();
   }
@@ -1072,8 +1085,10 @@
     const dateVal = document.getElementById('manualSessionDate').value || todayKey();
     const hrs = parseFloat(document.getElementById('manualSessionHrs').value) || 0;
     const mins = parseFloat(document.getElementById('manualSessionMins').value) || 0;
+    if(hrs < 0 || mins < 0){ alert("Hours and minutes can't be negative."); return; }
     const durationSec = Math.round((hrs*60 + mins) * 60);
     if(durationSec <= 0){ alert('Enter a duration greater than 0.'); return; }
+    if(durationSec > 16*3600){ alert("That's over 16 hours for one session — double check the numbers before adding it."); return; }
     if(!data.days[dateVal]) data.days[dateVal] = { sessions:[], targetMinutesAtStart: data.settings.dailyTargetMinutes };
     const anchor = dateVal + 'T12:00:00.000Z';
     data.days[dateVal].sessions.push({
