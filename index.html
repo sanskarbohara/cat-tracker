@@ -160,22 +160,13 @@
   .pct-hit{color:var(--success);}
   .pct-miss{color:#e87a5a;}
 
-  /* ---------- Trend badges & error patterns ---------- */
+  /* ---------- Trend badges ---------- */
   .trend-card .sec-name{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .trend-badge{font-size:9px; padding:2px 6px; border-radius:8px; font-weight:700; text-transform:none; letter-spacing:0; font-family:'Inter',sans-serif;}
   .trend-badge.trend-up{background:var(--success-dim); color:var(--success);}
   .trend-badge.trend-down{background:rgba(232,122,90,0.16); color:#e87a5a;}
   .trend-badge.trend-flat{background:rgba(139,136,144,0.16); color:var(--text-dim);}
   .errtag-chips .chip{padding:5px 10px; font-size:11px;}
-  .errpat-group{margin-bottom:16px;}
-  .errpat-group:last-child{margin-bottom:0;}
-  .errpat-sec{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
-  .errpat-total{font-size:11px; color:var(--text-faint);}
-  .errpat-row{display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:11.5px;}
-  .errpat-tag{width:86px; flex-shrink:0; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .errpat-bar-wrap{flex:1; background:var(--surface-2); border-radius:6px; height:8px; overflow:hidden;}
-  .errpat-bar{background:var(--accent); height:100%; border-radius:6px;}
-  .errpat-count{width:16px; text-align:right; font-family:'JetBrains Mono',monospace; color:var(--text-dim); flex-shrink:0;}
 
   .goal-progress{font-size:13px; color:var(--text-dim); margin-bottom:12px;}
   .goal-item{display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface-2); border-radius:8px; margin-bottom:8px;}
@@ -474,12 +465,6 @@
     <h2>Mock trends</h2>
     <div class="empty-note" id="mockCountLine" style="margin-bottom:10px;"></div>
     <div class="trend-grid" id="mockTrendGrid"></div>
-  </section>
-
-  <section>
-    <h2>Where the marks are going</h2>
-    <div class="empty-note" id="errorPatternEmpty">Tag "where did marks go" on a few entries (in the section block above) to see the pattern here.</div>
-    <div id="errorPatternList"></div>
   </section>
 
   <section>
@@ -1624,17 +1609,6 @@
     if(sd < 12) return 'some swings';
     return 'volatile';
   }
-  // Most-tagged reason for lost marks in this section/type. Needs >=2 tagged entries
-  // so one offhand tag doesn't get presented as "the" pattern.
-  function topErrorTag(entries){
-    const tagged = entries.filter(e=>e.errorTag);
-    if(tagged.length < 2) return null;
-    const counts = {};
-    tagged.forEach(e=>{ counts[e.errorTag] = (counts[e.errorTag]||0)+1; });
-    const [tag, count] = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
-    return { tag, count, total: tagged.length };
-  }
-
   function buildTrendCardHTML(sec, type){
     const targets = data.settings.targetPercentile || {};
     const entries = sectionEntries(sec, type);
@@ -1652,7 +1626,6 @@
     const avgAttempted = withAcc.length ? (withAcc.reduce((s,e)=>s+e.attempted,0)/withAcc.length) : null;
     const trend = trendLabel(withPct);
     const consistency = consistencyLabel(withPct);
-    const errTop = topErrorTag(entries);
     // Sparkline is percentile-only, on purpose - raw scores aren't comparable across
     // different test series (different scales, different negative-marking schemes),
     // so a line mixing them would show a shape that means nothing.
@@ -1679,7 +1652,6 @@
     }
     const peakLine = peakPct!==null ? `peak ${peakPct.toFixed(1)}%ile${consistency ? ' · '+consistency : ''}` : '';
     const accLine = avgAcc!==null ? `avg accuracy ${avgAcc.toFixed(0)}% on ~${Math.round(avgAttempted)} attempted` : '';
-    const errLine = errTop ? `most common issue: ${errTop.tag} (${errTop.count}/${errTop.total})` : '';
 
     return `<div class="trend-card">
       <div class="sec-name">${sec} · ${entries.length} attempt${entries.length>1?'s':''} ${trendBadge}</div>
@@ -1689,7 +1661,6 @@
           <div class="sec-sub">${avgLine}</div>
           ${peakLine ? `<div class="sec-sub">${peakLine}</div>` : ''}
           ${accLine ? `<div class="sec-sub">${accLine}</div>` : ''}
-          ${errLine ? `<div class="sec-sub">${errLine}</div>` : ''}
         </div>
         ${renderSparkline(sparkVals)}
       </div>
@@ -1710,47 +1681,6 @@
       `${mockCount} full mock${mockCount!==1?'s':''} logged`;
     document.getElementById('mockTrendGrid').innerHTML =
       ['VARC','Quant','LRDI','Overall'].map(sec => buildTrendCardHTML(sec, 'mock')).join('');
-  }
-
-  // Turns the per-entry error tags (sectional AND mock, pooled) into a per-section
-  // breakdown - this is what the tags were always for, but nothing surfaced them
-  // anywhere until now.
-  function renderErrorPatterns(){
-    const wrap = document.getElementById('errorPatternList');
-    const emptyNote = document.getElementById('errorPatternEmpty');
-    const tagged = data.tests.filter(t=>t.errorTag);
-    if(!tagged.length){
-      wrap.innerHTML = '';
-      emptyNote.classList.remove('hidden');
-      return;
-    }
-    emptyNote.classList.add('hidden');
-    const sectionOrder = ['VARC','Quant','LRDI','Overall'];
-    const tagOrder = ['Concept gap','Silly mistake','Time pressure','Wrong selection'];
-    const bySection = {};
-    sectionOrder.forEach(sec=>{
-      const entries = tagged.filter(t=>t.section===sec);
-      if(!entries.length) return;
-      const counts = {};
-      entries.forEach(e=>{ counts[e.errorTag] = (counts[e.errorTag]||0)+1; });
-      bySection[sec] = { total: entries.length, counts };
-    });
-    const maxCount = Math.max(...Object.values(bySection).flatMap(s=>Object.values(s.counts)));
-    wrap.innerHTML = Object.entries(bySection).map(([sec, info])=>{
-      const rows = tagOrder.filter(tag=>info.counts[tag]).sort((a,b)=>info.counts[b]-info.counts[a]).map(tag=>{
-        const count = info.counts[tag];
-        const barPct = maxCount ? (count/maxCount*100) : 0;
-        return `<div class="errpat-row">
-          <span class="errpat-tag">${tag}</span>
-          <div class="errpat-bar-wrap"><div class="errpat-bar" style="width:${barPct}%"></div></div>
-          <span class="errpat-count">${count}</span>
-        </div>`;
-      }).join('');
-      return `<div class="errpat-group">
-        <div class="errpat-sec"><span class="sec-tag ${sec}">${sec}</span><span class="errpat-total">${info.total} tagged</span></div>
-        ${rows}
-      </div>`;
-    }).join('');
   }
 
   function fullDetailHTML(t){
@@ -2010,7 +1940,6 @@
     renderAllocationResult();
     renderSectionalTrendCards();
     renderMockTrendCards();
-    renderErrorPatterns();
     renderMockReports();
     renderSectionalHistory();
   }
