@@ -396,7 +396,8 @@
     <div id="conflictButtons" class="hidden" style="margin-top:12px;">
       <div class="empty-note" id="conflictDetail" style="margin-bottom:8px;"></div>
       <div class="btn-row">
-        <button class="btn primary" id="useCloudBtn">Use the cloud copy</button>
+        <button class="btn primary hidden" id="useMergeBtn">Merge both & sync</button>
+        <button class="btn" id="useCloudBtn">Use the cloud copy</button>
         <button class="btn danger" id="useLocalBtn">Keep this device's copy</button>
       </div>
     </div>
@@ -742,6 +743,7 @@
 
   let currentSyncId = null;
   let pendingCloudConflict = null;
+  let pendingMerge = null;
 
   function setSyncStatus(msg, kind){
     const el = document.getElementById('cloudSyncStatus');
@@ -760,6 +762,12 @@
       lastKnownVersion = version;
       localStorage.setItem('lastSyncedVersion', String(version));
     }
+    // Snapshot the just-agreed state as next time's merge ancestor. By the time this
+    // runs - after a push, a pull, or confirming "already in sync" - `data` always
+    // equals what both this device and the cloud now hold. That's exactly the
+    // reference point a future 3-way merge needs to tell "added since we agreed"
+    // apart from "deleted since we agreed", instead of guessing.
+    try{ localStorage.setItem('lastSyncedSnapshot', JSON.stringify(data)); }catch(e){ /* best-effort */ }
   }
 
   // Pushes using optimistic concurrency: the write only lands if nobody else has
@@ -802,6 +810,181 @@
       setSyncStatus('Sync failed: ' + err.message, 'err');
       return false;
     }
+  }
+
+  // ==========================================================================
+  // Three-way merge for genuine conflicts (both this device and the cloud have
+  // unsynced changes). A plain union of "everything on device A" plus
+  // "everything on device B" would resurrect anything either side deliberately
+  // deleted (tests and sessions can both be deleted individually). Using the
+  // last state both sides actually agreed on (the ANCESTOR, snapshotted by
+  // markSynced) as a reference point tells "added since we agreed" apart from
+  // "existed back then, missing now" - the same principle any real
+  // version-control merge relies on. Only runs when an ancestor snapshot is
+  // actually available; otherwise there's no way to distinguish an addition
+  // from a deletion, so reconcile() falls back to the plain manual picker.
+  // ==========================================================================
+  function mergeById(ancestorArr, oursArr, theirsArr, idFn){
+    ancestorArr = ancestorArr || []; oursArr = oursArr || []; theirsArr = theirsArr || [];
+    const ancestorIds = new Set(ancestorArr.map(idFn));
+    const oursMap = new Map(oursArr.map(x=>[idFn(x), x]));
+    const theirsMap = new Map(theirsArr.map(x=>[idFn(x), x]));
+    const allIds = new Set([...oursMap.keys(), ...theirsMap.keys(), ...ancestorIds]);
+    const kept = [];
+    let addedFromOurs = 0, addedFromTheirs = 0, deletionsRespected = 0;
+    for(const id of allIds){
+      const inOurs = oursMap.has(id), inTheirs = theirsMap.has(id), inAncestor = ancestorIds.has(id);
+      if(inAncestor && (!inOurs || !inTheirs)){
+        deletionsRespected++;
+        continue; // existed at the ancestor, missing on at least one side now - respect the deletion, don't resurrect
+      }
+      if(!inOurs && !inTheirs) continue;
+      if(!inAncestor && inOurs && !inTheirs) addedFromOurs++;
+      if(!inAncestor && inTheirs && !inOurs) addedFromTheirs++;
+      kept.push(inOurs ? oursMap.get(id) : theirsMap.get(id));
+    }
+    return { items: kept, addedFromOurs, addedFromTheirs, deletionsRespected };
+  }
+  function mergeDaysObj(ancestorDays, oursDays, theirsDays){
+    ancestorDays = ancestorDays || {}; oursDays = oursDays || {}; theirsDays = theirsDays || {};
+    const allDates = new Set([...Object.keys(oursDays), ...Object.keys(theirsDays), ...Object.keys(ancestorDays)]);
+    const merged = {};
+    let addedSessionsFromOurs = 0, addedSessionsFromTheirs = 0, sessionsDeletionsRespected = 0;
+    for(const date of allDates){
+      const a = ancestorDays[date], o = oursDays[date], t = theirsDays[date];
+      const r = mergeById((a && a.sessions) || [], (o && o.sessions) || [], (t && t.sessions) || [], s => s.id);
+      addedSessionsFromOurs += r.addedFromOurs;
+      addedSessionsFromTheirs += r.addedFromTheirs;
+      sessionsDeletionsRespected += r.deletionsRespected;
+      if(!o && !t) continue;
+      merged[date] = {
+        sessions: r.items,
+        targetMinutesAtStart: (o && o.targetMinutesAtStart) || (t && t.targetMinutesAtStart) || (a && a.targetMinutesAtStart) || 240
+      };
+    }
+    return { days: merged, addedSessionsFromOurs, addedSessionsFromTheirs, sessionsDeletionsRespected };
+  }
+  // The unchanged side yields to whichever side actually changed the value since
+  // the ancestor. The "both changed it" branch is unreachable for a plain boolean
+  // (a 2-valued field can't diverge into two different non-ancestor values) - kept
+  // only as a defensive fallback, verified never to fire in practice.
+  function mergeBoolField(a, o, t){
+    if(o === t) return { value: o, conflict: false };
+    if(a === o) return { value: t, conflict: false };
+    if(a === t) return { value: o, conflict: false };
+    return { value: true, conflict: true };
+  }
+  function mergeGoalLogs(ancestorLogs, oursLogs, theirsLogs){
+    ancestorLogs = ancestorLogs || {}; oursLogs = oursLogs || {}; theirsLogs = theirsLogs || {};
+    const allDates = new Set([...Object.keys(oursLogs), ...Object.keys(theirsLogs), ...Object.keys(ancestorLogs)]);
+    const merged = {};
+    let conflictsResolved = 0;
+    for(const date of allDates){
+      const a = ancestorLogs[date] || {}, o = oursLogs[date] || {}, t = theirsLogs[date] || {};
+      const allGoalIds = new Set([...Object.keys(o), ...Object.keys(t), ...Object.keys(a)]);
+      const dayMerged = {};
+      for(const gid of allGoalIds){
+        const r = mergeBoolField(!!a[gid], !!o[gid], !!t[gid]);
+        dayMerged[gid] = r.value;
+        if(r.conflict) conflictsResolved++;
+      }
+      merged[date] = dayMerged;
+    }
+    return { logs: merged, conflictsResolved };
+  }
+  function mergeGoalsList(ancestorGoals, oursGoals, theirsGoals){
+    ancestorGoals = ancestorGoals || []; oursGoals = oursGoals || []; theirsGoals = theirsGoals || [];
+    const byId = mergeById(ancestorGoals, oursGoals, theirsGoals, g=>g.id);
+    const ancestorMap = new Map(ancestorGoals.map(g=>[g.id,g]));
+    const oursMap = new Map(oursGoals.map(g=>[g.id,g]));
+    const theirsMap = new Map(theirsGoals.map(g=>[g.id,g]));
+    let archiveConflicts = 0;
+    const merged = byId.items.map(g=>{
+      const id = g.id, o = oursMap.get(id), t = theirsMap.get(id);
+      if(!o || !t) return g;
+      const a = ancestorMap.get(id);
+      const r = mergeBoolField(a ? !!a.archived : false, !!o.archived, !!t.archived);
+      if(r.conflict) archiveConflicts++;
+      return { ...o, archived: r.value };
+    });
+    return { goals: merged, addedFromOurs: byId.addedFromOurs, addedFromTheirs: byId.addedFromTheirs, archiveConflicts };
+  }
+  function mergeSettingsObj(ancestorSettings, oursSettings, theirsSettings){
+    ancestorSettings = ancestorSettings || {}; oursSettings = oursSettings || {}; theirsSettings = theirsSettings || {};
+    const merged = { ...oursSettings };
+    let settingsConflicts = 0;
+    ['catDate','dailyTargetMinutes'].forEach(f=>{
+      const a = ancestorSettings[f], o = oursSettings[f], t = theirsSettings[f];
+      if(o === t){ merged[f] = o; return; }
+      if(a === o){ merged[f] = t; return; }
+      if(a === t){ merged[f] = o; return; }
+      merged[f] = o; settingsConflicts++; // arbitrary tie-break, low-stakes and instantly re-editable
+    });
+    const aTP = ancestorSettings.targetPercentile || {}, oTP = oursSettings.targetPercentile || {}, tTP = theirsSettings.targetPercentile || {};
+    const mergedTP = {};
+    ['VARC','Quant','LRDI','Overall'].forEach(sec=>{
+      const a = aTP[sec], o = oTP[sec], t = tTP[sec];
+      if(o === t){ mergedTP[sec] = o; return; }
+      if(a === o){ mergedTP[sec] = t; return; }
+      if(a === t){ mergedTP[sec] = o; return; }
+      mergedTP[sec] = o; settingsConflicts++;
+    });
+    merged.targetPercentile = mergedTP;
+    return { settings: merged, settingsConflicts };
+  }
+  // Guards against a corrupted or unexpectedly-shaped ancestor snapshot (e.g. valid
+  // JSON that isn't actually an object) being silently treated as "an empty
+  // ancestor". That would be worse than having no ancestor at all: every existing
+  // item would look like a brand-new addition instead of a possible deletion,
+  // defeating the entire reason this exists. Any shape mismatch here must fall
+  // back to no-merge, never to a best-effort guess.
+  function isValidAncestorShape(a){
+    return !!a && typeof a === 'object' && !Array.isArray(a) &&
+      (a.tests === undefined || Array.isArray(a.tests)) &&
+      (a.days === undefined || (typeof a.days === 'object' && a.days !== null && !Array.isArray(a.days))) &&
+      (a.goals === undefined || Array.isArray(a.goals)) &&
+      (a.goalLogs === undefined || (typeof a.goalLogs === 'object' && a.goalLogs !== null && !Array.isArray(a.goalLogs))) &&
+      (a.settings === undefined || (typeof a.settings === 'object' && a.settings !== null && !Array.isArray(a.settings)));
+  }
+  function computeThreeWayMerge(ancestor, ours, theirs){
+    const testsResult = mergeById(ancestor.tests, ours.tests, theirs.tests, t=>t.id);
+    const daysResult = mergeDaysObj(ancestor.days, ours.days, theirs.days);
+    const goalLogsResult = mergeGoalLogs(ancestor.goalLogs, ours.goalLogs, theirs.goalLogs);
+    const goalsResult = mergeGoalsList(ancestor.goals, ours.goals, theirs.goals);
+    const settingsResult = mergeSettingsObj(ancestor.settings, ours.settings, theirs.settings);
+    const merged = {
+      settings: settingsResult.settings,
+      days: daysResult.days,
+      tests: testsResult.items,
+      activeSession: ours.activeSession || null, // ephemeral timer state - not merge-worthy, just carry ours
+      goals: goalsResult.goals,
+      goalLogs: goalLogsResult.logs,
+      lastModified: Date.now()
+    };
+    const summary = {
+      newTestsFromOurs: testsResult.addedFromOurs, newTestsFromTheirs: testsResult.addedFromTheirs,
+      testDeletionsRespected: testsResult.deletionsRespected,
+      newSessionsFromOurs: daysResult.addedSessionsFromOurs, newSessionsFromTheirs: daysResult.addedSessionsFromTheirs,
+      sessionDeletionsRespected: daysResult.sessionsDeletionsRespected,
+      goalLogConflictsResolved: goalLogsResult.conflictsResolved,
+      newGoalsFromOurs: goalsResult.addedFromOurs, newGoalsFromTheirs: goalsResult.addedFromTheirs,
+      goalArchiveConflicts: goalsResult.archiveConflicts,
+      settingsConflicts: settingsResult.settingsConflicts
+    };
+    return { merged, summary };
+  }
+  function describeMergeSummary(summary){
+    const parts = [];
+    const newOurs = summary.newTestsFromOurs + summary.newSessionsFromOurs + summary.newGoalsFromOurs;
+    const newTheirs = summary.newTestsFromTheirs + summary.newSessionsFromTheirs + summary.newGoalsFromTheirs;
+    if(newOurs) parts.push(`keep ${newOurs} new item${newOurs>1?'s':''} from this device`);
+    if(newTheirs) parts.push(`keep ${newTheirs} new item${newTheirs>1?'s':''} from the cloud`);
+    const deletions = summary.testDeletionsRespected + summary.sessionDeletionsRespected;
+    if(deletions) parts.push(`respect ${deletions} deletion${deletions>1?'s':''} already made`);
+    const conflicts = summary.goalLogConflictsResolved + summary.goalArchiveConflicts + summary.settingsConflicts;
+    if(conflicts) parts.push(`auto-resolve ${conflicts} tie${conflicts>1?'s':''}`);
+    if(!parts.length) return 'The two sides only differ in bookkeeping — merging is safe either way.';
+    return 'Merging would ' + parts.join(', ') + '. No test entries, sessions, or goals get dropped.';
   }
 
   function applyRemote(remoteBlob, remoteTs, remoteVersion){
@@ -887,15 +1070,40 @@
             // do NOT overwrite it with a false claim of success
           }
         } else {
-          // both sides changed since they last agreed - genuine conflict, ask explicitly
+          // both sides changed since they last agreed - genuine conflict.
+          // Try to compute a safe 3-way merge using this device's last-agreed
+          // snapshot as the reference point; only offer it if that snapshot
+          // actually exists and the merge computes without error, so a device
+          // syncing for the first time (or one whose snapshot got cleared) still
+          // falls back to exactly the original manual choice, unchanged.
           pendingCloudConflict = { data: remote, last_modified: remoteTs, version: row.version || 0 };
+          pendingMerge = null;
+          try{
+            const rawAncestor = localStorage.getItem('lastSyncedSnapshot');
+            if(rawAncestor){
+              const ancestor = JSON.parse(rawAncestor);
+              if(isValidAncestorShape(ancestor)){
+                const { merged, summary } = computeThreeWayMerge(ancestor, data, remote);
+                pendingMerge = { merged, summary };
+              }
+            }
+          }catch(e){ pendingMerge = null; }
+
           const localRichness = dataRichness(data);
           const remoteRichness = dataRichness(remote);
           const localWhen = localTs ? new Date(localTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
           const remoteWhen = remoteTs ? new Date(remoteTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
           const detailEl = document.getElementById('conflictDetail');
-          if(detailEl) detailEl.textContent =
-            `Both this device and the cloud have changes since they last matched. This device: ${localRichness} records, last saved ${localWhen}. Cloud: ${remoteRichness} records, last saved ${remoteWhen}. Pick which to keep — the other side will be overwritten.`;
+          const mergeBtn = document.getElementById('useMergeBtn');
+          let detailText = `Both this device and the cloud have changes since they last matched. This device: ${localRichness} records, last saved ${localWhen}. Cloud: ${remoteRichness} records, last saved ${remoteWhen}.`;
+          if(pendingMerge){
+            detailText += ' ' + describeMergeSummary(pendingMerge.summary);
+            if(mergeBtn) mergeBtn.classList.remove('hidden');
+          } else {
+            detailText += ' Pick which to keep — the other side will be overwritten.';
+            if(mergeBtn) mergeBtn.classList.add('hidden');
+          }
+          if(detailEl) detailEl.textContent = detailText;
           setSyncStatus('Changes on both sides — pick which to keep below.', 'err');
           showConflictButtons(true);
         }
@@ -908,6 +1116,24 @@
     if(syncBtn) syncBtn.disabled = false;
   }
 
+  document.getElementById('useMergeBtn').addEventListener('click', async ()=>{
+    if(!pendingMerge || !pendingCloudConflict) return;
+    if(!confirm("Merge both devices' changes and sync? " + describeMergeSummary(pendingMerge.summary))) return;
+    snapshotBackup('force');
+    data = normalizeData(pendingMerge.merged);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    lastKnownVersion = pendingCloudConflict.version || 0; // version seen when the conflict was detected, so the push stays conditional
+    pendingCloudConflict = null;
+    pendingMerge = null;
+    showConflictButtons(false);
+    renderAll();
+    renderTestsPage();
+    renderGoalsPage();
+    const ok = await pushToCloud();
+    if(ok) setSyncStatus("Merged both devices' changes and synced ✓", 'ok');
+    // if the push failed, pushToCloud already set a specific status message - the
+    // merged result is still saved on this device either way, nothing is lost
+  });
   document.getElementById('useCloudBtn').addEventListener('click', ()=>{
     if(!pendingCloudConflict) return;
     snapshotBackup('force');
@@ -915,6 +1141,7 @@
     setSyncStatus('Switched to the cloud copy ✓', 'ok');
     showConflictButtons(false);
     pendingCloudConflict = null;
+    pendingMerge = null;
   });
   document.getElementById('useLocalBtn').addEventListener('click', async ()=>{
     if(confirm("This overwrites the cloud copy with what's on this device. Continue?")){
@@ -922,6 +1149,7 @@
       // still safely conditional rather than blind
       lastKnownVersion = pendingCloudConflict ? (pendingCloudConflict.version || 0) : lastKnownVersion;
       pendingCloudConflict = null;
+      pendingMerge = null;
       showConflictButtons(false);
       const ok = await pushToCloud();
       if(ok) setSyncStatus("This device's copy is now the cloud copy ✓", 'ok');
