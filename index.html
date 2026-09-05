@@ -39,6 +39,16 @@
   h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;}
   .mono{font-family:'JetBrains Mono',monospace;}
   .app{max-width:720px; margin:0 auto; padding:0 18px;}
+  /* Generic hide utility. The code treats `.hidden` as a universal "not displayed"
+     class on many different elements, but only three of them (.page, .detail-row,
+     .day-detail) ever had a matching scoped rule - every other element that got
+     this class (the manual-session form, the sync conflict buttons, several
+     empty-state notes) was silently NEVER actually hidden, because nothing in the
+     stylesheet said so. This single rule covers all of them, and any future one,
+     instead of needing a new scoped rule added every time a feature reuses `hidden`.
+     !important is deliberate here: this class only ever means "not displayed",
+     so nothing should be able to out-specificity it back into view by accident. */
+  .hidden{display:none !important;}
   .page.hidden{display:none;}
 
   /* ---------- Tab bar ---------- */
@@ -504,6 +514,14 @@
     <h2>Today's targets</h2>
     <div class="goal-progress" id="goalProgressLine"></div>
     <div id="todayGoalList"></div>
+    <button class="btn" id="backdateGoalToggle" style="margin-top:10px;">+ Log for a different date</button>
+    <div id="backdateGoalForm" class="hidden" style="margin-top:10px;">
+      <div class="field">
+        <label for="backdateGoalDate">Date</label>
+        <input type="date" id="backdateGoalDate">
+      </div>
+      <div id="backdateGoalList"></div>
+    </div>
   </section>
 
   <section>
@@ -552,19 +570,23 @@
     </div>
     <div class="field">
       <label>Topic</label>
-      <div class="filter-chips" id="practiceTopicChips"></div>
-      <div class="field-row">
+      <select id="practiceTopicSelect" class="select-input"></select>
+      <div class="field-row" style="margin-top:6px;">
         <input type="text" id="practiceNewTopicInput" placeholder="New topic name" style="flex:3;">
         <button class="btn" id="practiceAddTopicBtn" style="flex:1;">Add</button>
       </div>
     </div>
     <div class="field">
       <label>Sub-topic (optional)</label>
-      <div class="filter-chips" id="practiceSubtopicChips"></div>
-      <div class="field-row">
+      <select id="practiceSubtopicSelect" class="select-input"></select>
+      <div class="field-row" style="margin-top:6px;">
         <input type="text" id="practiceNewSubtopicInput" placeholder="New sub-topic name" style="flex:3;">
         <button class="btn" id="practiceAddSubtopicBtn" style="flex:1;">Add</button>
       </div>
+    </div>
+    <div class="field">
+      <label for="practiceSourceInput">Source (optional)</label>
+      <input type="text" id="practiceSourceInput" placeholder="e.g. Arun Sharma, TIME sectional, an app">
     </div>
     <div class="field">
       <label for="practiceCountInput">Questions solved</label>
@@ -709,6 +731,7 @@
             subject: l.subject,
             topicId: l.topicId,
             subtopicId: l.subtopicId || null,
+            source: typeof l.source === 'string' ? l.source.trim() : '',
             count: Math.round(parseFloat(l.count))
           }))
       : [];
@@ -747,7 +770,10 @@
     const dayCount = d.days && typeof d.days==='object' ? Object.keys(d.days).length : 0;
     const goalLogDays = d.goalLogs && typeof d.goalLogs==='object' ? Object.keys(d.goalLogs).length : 0;
     const practiceLogCount = d.practice && Array.isArray(d.practice.logs) ? d.practice.logs.length : 0;
-    return testCount + dayCount + goalLogDays + practiceLogCount;
+    const practiceTopicCount = d.practice && d.practice.topics && typeof d.practice.topics==='object'
+      ? Object.values(d.practice.topics).reduce((s,arr)=> s + (Array.isArray(arr)?arr.length:0), 0)
+      : 0;
+    return testCount + dayCount + goalLogDays + practiceLogCount + practiceTopicCount;
   }
 
   function snapshotBackup(mode){
@@ -809,6 +835,7 @@
         renderAll();
         renderTestsPage();
         renderGoalsPage();
+        renderPracticePage();
         alert('Restored.');
       });
     });
@@ -1183,7 +1210,8 @@
   function renderSessionList(){
     const ul = document.getElementById('sessionList');
     ul.innerHTML = '';
-    const today = data.days[todayKey()];
+    const dayKeyForList = todayKey(); // captured once - see note on the delete handler below
+    const today = data.days[dayKeyForList];
     const sessions = (today && today.sessions) || [];
     if(!sessions.length){
       ul.innerHTML = '<div class="empty-note">No sessions logged yet today. Hit the timer to start.</div>';
@@ -1192,11 +1220,15 @@
     sessions.slice().reverse().forEach(s=>{
       const li = document.createElement('li');
       const label = s.manual ? 'Manually added' : `${fmtTime(s.start)} – ${fmtTime(s.end)}`;
-      li.innerHTML = `<span class="times">${label}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span><button class="del-btn" data-session-id="${s.id}" aria-label="Delete session">✕</button>`;
+      li.innerHTML = `<span class="times">${label}</span><span class="dur mono">${fmtHM(s.durationSec/60)}</span><button class="del-btn" data-session-id="${s.id}" data-day-key="${dayKeyForList}" aria-label="Delete session">✕</button>`;
       ul.appendChild(li);
     });
+    // The day key is read from the button itself (captured at render time), not
+    // recomputed at click time - if the app is left open across midnight, today's
+    // list would otherwise ask deleteSession to look in the NEW day for a session
+    // that's actually filed under the day this list was rendered for.
     ul.querySelectorAll('.del-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> deleteSession(todayKey(), btn.dataset.sessionId));
+      btn.addEventListener('click', ()=> deleteSession(btn.dataset.dayKey, btn.dataset.sessionId));
     });
   }
 
@@ -1834,7 +1866,10 @@
             <span class="mr-pct">${t.percentile!==null && t.percentile!==undefined ? t.percentile+'%ile' : '—'}</span>
             <span class="mr-caret">▸</span>
           </div>
-          <div class="mock-row-detail">${fullDetailHTML(t)}</div>
+          <div class="mock-row-detail">
+            ${fullDetailHTML(t)}
+            <button class="del-btn" data-id="${t.id}" aria-label="Delete section entry" style="margin-top:8px;">Delete this section's entry</button>
+          </div>
         </div>`;
       }).join('');
       return `<div class="mock-card">
@@ -1850,8 +1885,12 @@
 
     wrap.querySelectorAll('.mock-row').forEach(row=>{
       row.addEventListener('click', (e)=>{
+        if(e.target.classList.contains('del-btn')) return;
         row.classList.toggle('expanded');
       });
+    });
+    wrap.querySelectorAll('.mock-row .del-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteTest(btn.dataset.id); });
     });
   }
 
@@ -2054,13 +2093,14 @@
   function activeGoals(){ return data.goals.filter(g=>!g.archived); }
   function goalById(id){ return data.goals.find(g=>g.id===id); }
 
-  function toggleGoal(goalId, checked){
-    const key = todayKey();
+  function toggleGoal(goalId, checked, dateKeyStr){
+    const key = dateKeyStr || todayKey();
     if(!data.goalLogs[key]) data.goalLogs[key] = {};
     data.goalLogs[key][goalId] = checked;
     saveData();
     renderTodayGoals();
     renderGoalCalendar();
+    renderBackdateGoalList();
   }
 
   function renderTodayGoals(){
@@ -2098,6 +2138,51 @@
       cb.addEventListener('change', ()=> toggleGoal(cb.dataset.goalId, cb.checked));
     });
   }
+
+  // Logging for a date other than today - same active-goals list, just read/written
+  // against whichever date is picked instead of always today. Uses the current
+  // active-goals list regardless of the picked date's age, matching how the
+  // "today" checklist already works (goals aren't date-versioned).
+  function renderBackdateGoalList(){
+    const dateInput = document.getElementById('backdateGoalDate');
+    const wrap = document.getElementById('backdateGoalList');
+    const dateVal = dateInput.value;
+    if(!dateVal){ wrap.innerHTML = ''; return; }
+    if(dateVal > todayKey()){
+      wrap.innerHTML = '<div class="empty-note">Pick today or an earlier date.</div>';
+      return;
+    }
+    const goals = activeGoals();
+    if(!goals.length){
+      wrap.innerHTML = '<div class="empty-note">No active targets to log.</div>';
+      return;
+    }
+    if(!data.goalLogs[dateVal]) data.goalLogs[dateVal] = {};
+    const dayLog = data.goalLogs[dateVal];
+    wrap.innerHTML = goals.map(g=>{
+      const checked = !!dayLog[g.id];
+      return `<label class="goal-item ${checked?'done':''}">
+        <input type="checkbox" data-goal-id="${g.id}" ${checked?'checked':''}>
+        <span class="goal-text">${g.text}</span>
+      </label>`;
+    }).join('');
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change', ()=> toggleGoal(cb.dataset.goalId, cb.checked, dateVal));
+    });
+  }
+  document.getElementById('backdateGoalToggle').addEventListener('click', ()=>{
+    const form = document.getElementById('backdateGoalForm');
+    const nowHidden = form.classList.toggle('hidden');
+    if(!nowHidden){
+      const dateInput = document.getElementById('backdateGoalDate');
+      if(!dateInput.value){
+        const y = new Date(); y.setDate(y.getDate()-1);
+        dateInput.value = dateKey(y); // default to yesterday - the most likely "I forgot" case
+      }
+      renderBackdateGoalList();
+    }
+  });
+  document.getElementById('backdateGoalDate').addEventListener('change', renderBackdateGoalList);
 
   function dayGoalStats(dateKeyStr){
     const dayLog = data.goalLogs[dateKeyStr];
@@ -2295,35 +2380,29 @@
       chip.classList.toggle('active', chip.dataset.subject === practiceSubject);
     });
   }
-  function renderPracticeTopicChips(){
-    const wrap = document.getElementById('practiceTopicChips');
+  function renderPracticeTopicSelect(){
+    const sel = document.getElementById('practiceTopicSelect');
     const topics = practiceTopicsFor(practiceSubject);
-    wrap.innerHTML = topics.map(t=>
-      `<button type="button" class="chip${t.id===practiceSelectedTopicId?' active':''}" data-topic-id="${t.id}">${t.name}</button>`
-    ).join('') || '';
-    wrap.querySelectorAll('.chip').forEach(chip=>{
-      chip.addEventListener('click', ()=>{
-        practiceSelectedTopicId = chip.dataset.topicId;
-        practiceSelectedSubtopicId = null;
-        renderPracticeTopicChips();
-        renderPracticeSubtopicChips();
-      });
-    });
+    sel.innerHTML = '<option value="">— pick a topic —</option>' +
+      topics.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    sel.value = practiceSelectedTopicId || '';
   }
-  function renderPracticeSubtopicChips(){
-    const wrap = document.getElementById('practiceSubtopicChips');
+  function renderPracticeSubtopicSelect(){
+    const sel = document.getElementById('practiceSubtopicSelect');
     const topic = practiceSelectedTopicId ? practiceTopicById(practiceSubject, practiceSelectedTopicId) : null;
     const subtopics = topic ? (topic.subtopics || []) : [];
-    wrap.innerHTML = subtopics.map(s=>
-      `<button type="button" class="chip${s.id===practiceSelectedSubtopicId?' active':''}" data-subtopic-id="${s.id}">${s.name}</button>`
-    ).join('') || '';
-    wrap.querySelectorAll('.chip').forEach(chip=>{
-      chip.addEventListener('click', ()=>{
-        practiceSelectedSubtopicId = (chip.dataset.subtopicId === practiceSelectedSubtopicId) ? null : chip.dataset.subtopicId;
-        renderPracticeSubtopicChips();
-      });
-    });
+    sel.innerHTML = '<option value="">— none —</option>' +
+      subtopics.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    sel.value = practiceSelectedSubtopicId || '';
   }
+  document.getElementById('practiceTopicSelect').addEventListener('change', (e)=>{
+    practiceSelectedTopicId = e.target.value || null;
+    practiceSelectedSubtopicId = null;
+    renderPracticeSubtopicSelect();
+  });
+  document.getElementById('practiceSubtopicSelect').addEventListener('change', (e)=>{
+    practiceSelectedSubtopicId = e.target.value || null;
+  });
 
   document.querySelectorAll('#practiceSubjectChips .chip').forEach(chip=>{
     chip.addEventListener('click', ()=>{
@@ -2331,8 +2410,8 @@
       practiceSelectedTopicId = null;
       practiceSelectedSubtopicId = null;
       renderPracticeSubjectChips();
-      renderPracticeTopicChips();
-      renderPracticeSubtopicChips();
+      renderPracticeTopicSelect();
+      renderPracticeSubtopicSelect();
     });
   });
 
@@ -2378,16 +2457,21 @@
     const countInput = document.getElementById('practiceCountInput');
     const count = Math.round(parseFloat(countInput.value));
     if(!count || count <= 0 || isNaN(count)){ alert('Enter how many questions you solved.'); return; }
+    const source = document.getElementById('practiceSourceInput').value.trim();
     data.practice.logs.push({
       id: makePracticeLogId(),
       date: todayKey(),
       subject: practiceSubject,
       topicId: practiceSelectedTopicId,
       subtopicId: practiceSelectedSubtopicId || null,
+      source,
       count
     });
     saveData();
     countInput.value = '';
+    // deliberately not clearing source - logging several entries in a row from the
+    // same book/series is the common case, and retyping it each time is exactly the
+    // friction this field exists to avoid
     renderPracticePage();
   });
 
@@ -2396,6 +2480,26 @@
     data.practice.logs = data.practice.logs.filter(l=>l.id!==id);
     saveData();
     renderPracticePage();
+  }
+
+  function beginEditPracticeLog(logId){
+    const row = document.querySelector(`#practiceTodayList .goal-manage-row[data-log-id="${logId}"]`);
+    const log = data.practice.logs.find(l=>l.id===logId);
+    if(!row || !log) return;
+    row.innerHTML = `
+      <input type="number" inputmode="decimal" step="1" min="1" class="practice-log-edit-input" value="${log.count}" style="max-width:80px;">
+      <button class="save-practice-log-btn">Save</button>
+      <button class="cancel-practice-log-btn">Cancel</button>`;
+    const input = row.querySelector('.practice-log-edit-input');
+    input.focus();
+    row.querySelector('.save-practice-log-btn').addEventListener('click', ()=>{
+      const newCount = Math.round(parseFloat(input.value));
+      if(!newCount || newCount <= 0 || isNaN(newCount)){ alert('Enter a number greater than 0.'); return; }
+      log.count = newCount;
+      saveData();
+      renderPracticePage();
+    });
+    row.querySelector('.cancel-practice-log-btn').addEventListener('click', ()=> renderPracticeTodayList());
   }
 
   function deletePracticeTopic(subject, topicId){
@@ -2490,11 +2594,16 @@
       const topicName = topic ? topic.name : '(deleted topic)';
       const sub = topic && l.subtopicId ? (topic.subtopics||[]).find(s=>s.id===l.subtopicId) : null;
       const label = sub ? `${l.subject} · ${topicName} · ${sub.name}` : `${l.subject} · ${topicName}`;
+      const sourceNote = l.source ? ` (${l.source})` : '';
       return `<div class="goal-manage-row" data-log-id="${l.id}">
-        <span class="goal-text">${label} — ${l.count}</span>
+        <span class="goal-text">${label} — ${l.count}${sourceNote}</span>
+        <button class="edit-practice-log-btn" data-log-id="${l.id}">Edit</button>
         <button class="remove del-practice-log-btn" data-log-id="${l.id}">Remove</button>
       </div>`;
     }).join('');
+    wrap.querySelectorAll('.edit-practice-log-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> beginEditPracticeLog(btn.dataset.logId));
+    });
     wrap.querySelectorAll('.del-practice-log-btn').forEach(btn=>{
       btn.addEventListener('click', ()=> deletePracticeLog(btn.dataset.logId));
     });
@@ -2573,9 +2682,24 @@
   }
 
   function renderPracticePage(){
+    // Defends against a stale selection pointing at a topic/subtopic that no longer
+    // exists - e.g. after a sync pull, import, reset, or backup restore replaces the
+    // whole data set out from under an in-progress selection here. Re-validated on
+    // every render rather than patched at each of those call sites individually, so
+    // a future one can't be missed the way it was for the sync-conflict button.
+    if(practiceSelectedTopicId && !practiceTopicById(practiceSubject, practiceSelectedTopicId)){
+      practiceSelectedTopicId = null;
+      practiceSelectedSubtopicId = null;
+    }
+    if(practiceSelectedSubtopicId){
+      const topic = practiceSelectedTopicId ? practiceTopicById(practiceSubject, practiceSelectedTopicId) : null;
+      if(!topic || !(topic.subtopics||[]).some(s=>s.id===practiceSelectedSubtopicId)){
+        practiceSelectedSubtopicId = null;
+      }
+    }
     renderPracticeSubjectChips();
-    renderPracticeTopicChips();
-    renderPracticeSubtopicChips();
+    renderPracticeTopicSelect();
+    renderPracticeSubtopicSelect();
     renderPracticeTodayList();
     renderPracticeCoverage();
     renderPracticeManageList();
@@ -2606,6 +2730,7 @@
   goalCalViewMonth = now.getMonth();
   renderGoalCalDow();
   renderGoalsPage(); // always safe now - nothing automatic ever touches the network on load
+  renderPracticePage();
 
   // Just show whether a Sync ID is already saved on this device. No network call happens
   // here at all - syncing only ever runs when "Sync now" is tapped, explicitly.
