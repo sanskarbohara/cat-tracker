@@ -282,6 +282,7 @@
     <button class="tab-btn active" id="tabStudyBtn" data-page="study">Study</button>
     <button class="tab-btn" id="tabTestsBtn" data-page="tests">Tests</button>
     <button class="tab-btn" id="tabGoalsBtn" data-page="goals">Goals</button>
+    <button class="tab-btn" id="tabPracticeBtn" data-page="practice">Practice</button>
   </nav>
 
   <div id="page-study" class="page">
@@ -396,8 +397,7 @@
     <div id="conflictButtons" class="hidden" style="margin-top:12px;">
       <div class="empty-note" id="conflictDetail" style="margin-bottom:8px;"></div>
       <div class="btn-row">
-        <button class="btn primary hidden" id="useMergeBtn">Merge both & sync</button>
-        <button class="btn" id="useCloudBtn">Use the cloud copy</button>
+        <button class="btn primary" id="useCloudBtn">Use the cloud copy</button>
         <button class="btn danger" id="useLocalBtn">Keep this device's copy</button>
       </div>
     </div>
@@ -533,6 +533,65 @@
 
   </div><!-- /page-goals -->
 
+  <div id="page-practice" class="page hidden">
+
+  <section>
+    <h2>Today</h2>
+    <div class="goal-progress" id="practiceTodayLine"></div>
+  </section>
+
+  <section>
+    <h2>Log practice</h2>
+    <div class="field">
+      <label>Subject</label>
+      <div class="filter-chips" id="practiceSubjectChips">
+        <button type="button" class="chip active" data-subject="VARC">VARC</button>
+        <button type="button" class="chip" data-subject="Quant">Quant</button>
+        <button type="button" class="chip" data-subject="LRDI">LRDI</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Topic</label>
+      <div class="filter-chips" id="practiceTopicChips"></div>
+      <div class="field-row">
+        <input type="text" id="practiceNewTopicInput" placeholder="New topic name" style="flex:3;">
+        <button class="btn" id="practiceAddTopicBtn" style="flex:1;">Add</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Sub-topic (optional)</label>
+      <div class="filter-chips" id="practiceSubtopicChips"></div>
+      <div class="field-row">
+        <input type="text" id="practiceNewSubtopicInput" placeholder="New sub-topic name" style="flex:3;">
+        <button class="btn" id="practiceAddSubtopicBtn" style="flex:1;">Add</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="practiceCountInput">Questions solved</label>
+      <input type="number" inputmode="decimal" step="1" min="1" id="practiceCountInput">
+    </div>
+    <button class="btn primary" id="practiceAddLogBtn">Add entry</button>
+  </section>
+
+  <section>
+    <h2>Today's entries</h2>
+    <div class="empty-note" id="practiceTodayEmpty">Nothing logged yet today.</div>
+    <div id="practiceTodayList"></div>
+  </section>
+
+  <section>
+    <h2>Coverage</h2>
+    <div class="empty-note" id="practiceCoverageEmpty">Add a topic above to start tracking coverage.</div>
+    <div id="practiceCoverageList"></div>
+  </section>
+
+  <section>
+    <h2>Manage topics</h2>
+    <div id="practiceManageList"></div>
+  </section>
+
+  </div><!-- /page-practice -->
+
   <footer>Data lives only in this browser. Export a backup regularly.</footer>
 </div>
 
@@ -621,6 +680,39 @@
       Object.keys(dayLog).forEach(gid=>{ dayLog[gid] = !!dayLog[gid]; });
     });
 
+    // Practice log: subject > topic > sub-topic, with a running question count per
+    // entry. Topics/sub-topics are user-defined (no preset syllabus) - each is just
+    // a name + stable id, and logs reference the id (not the name) so a later rename
+    // doesn't fragment historical totals the way re-typing a name each time would.
+    raw.practice = (raw.practice && typeof raw.practice==='object') ? raw.practice : {};
+    raw.practice.topics = (raw.practice.topics && typeof raw.practice.topics==='object') ? raw.practice.topics : {};
+    ['VARC','Quant','LRDI'].forEach(sec=>{
+      const list = Array.isArray(raw.practice.topics[sec]) ? raw.practice.topics[sec] : [];
+      raw.practice.topics[sec] = list
+        .filter(t => t && typeof t==='object' && typeof t.name==='string' && t.name.trim())
+        .map(t => ({
+          id: t.id || ('topic_'+Math.random().toString(36).slice(2,9)),
+          name: t.name.trim(),
+          subtopics: Array.isArray(t.subtopics)
+            ? t.subtopics
+                .filter(s => s && typeof s==='object' && typeof s.name==='string' && s.name.trim())
+                .map(s => ({ id: s.id || ('sub_'+Math.random().toString(36).slice(2,9)), name: s.name.trim() }))
+            : []
+        }));
+    });
+    raw.practice.logs = Array.isArray(raw.practice.logs)
+      ? raw.practice.logs
+          .filter(l => l && typeof l==='object' && l.subject && l.topicId && !isNaN(parseFloat(l.count)) && parseFloat(l.count) > 0)
+          .map(l => ({
+            id: l.id || ('plog_'+Math.random().toString(36).slice(2,9)),
+            date: l.date || '1970-01-01',
+            subject: l.subject,
+            topicId: l.topicId,
+            subtopicId: l.subtopicId || null,
+            count: Math.round(parseFloat(l.count))
+          }))
+      : [];
+
     return raw;
   }
 
@@ -654,7 +746,8 @@
     const testCount = Array.isArray(d.tests) ? d.tests.length : 0;
     const dayCount = d.days && typeof d.days==='object' ? Object.keys(d.days).length : 0;
     const goalLogDays = d.goalLogs && typeof d.goalLogs==='object' ? Object.keys(d.goalLogs).length : 0;
-    return testCount + dayCount + goalLogDays;
+    const practiceLogCount = d.practice && Array.isArray(d.practice.logs) ? d.practice.logs.length : 0;
+    return testCount + dayCount + goalLogDays + practiceLogCount;
   }
 
   function snapshotBackup(mode){
@@ -743,7 +836,6 @@
 
   let currentSyncId = null;
   let pendingCloudConflict = null;
-  let pendingMerge = null;
 
   function setSyncStatus(msg, kind){
     const el = document.getElementById('cloudSyncStatus');
@@ -762,12 +854,6 @@
       lastKnownVersion = version;
       localStorage.setItem('lastSyncedVersion', String(version));
     }
-    // Snapshot the just-agreed state as next time's merge ancestor. By the time this
-    // runs - after a push, a pull, or confirming "already in sync" - `data` always
-    // equals what both this device and the cloud now hold. That's exactly the
-    // reference point a future 3-way merge needs to tell "added since we agreed"
-    // apart from "deleted since we agreed", instead of guessing.
-    try{ localStorage.setItem('lastSyncedSnapshot', JSON.stringify(data)); }catch(e){ /* best-effort */ }
   }
 
   // Pushes using optimistic concurrency: the write only lands if nobody else has
@@ -812,181 +898,6 @@
     }
   }
 
-  // ==========================================================================
-  // Three-way merge for genuine conflicts (both this device and the cloud have
-  // unsynced changes). A plain union of "everything on device A" plus
-  // "everything on device B" would resurrect anything either side deliberately
-  // deleted (tests and sessions can both be deleted individually). Using the
-  // last state both sides actually agreed on (the ANCESTOR, snapshotted by
-  // markSynced) as a reference point tells "added since we agreed" apart from
-  // "existed back then, missing now" - the same principle any real
-  // version-control merge relies on. Only runs when an ancestor snapshot is
-  // actually available; otherwise there's no way to distinguish an addition
-  // from a deletion, so reconcile() falls back to the plain manual picker.
-  // ==========================================================================
-  function mergeById(ancestorArr, oursArr, theirsArr, idFn){
-    ancestorArr = ancestorArr || []; oursArr = oursArr || []; theirsArr = theirsArr || [];
-    const ancestorIds = new Set(ancestorArr.map(idFn));
-    const oursMap = new Map(oursArr.map(x=>[idFn(x), x]));
-    const theirsMap = new Map(theirsArr.map(x=>[idFn(x), x]));
-    const allIds = new Set([...oursMap.keys(), ...theirsMap.keys(), ...ancestorIds]);
-    const kept = [];
-    let addedFromOurs = 0, addedFromTheirs = 0, deletionsRespected = 0;
-    for(const id of allIds){
-      const inOurs = oursMap.has(id), inTheirs = theirsMap.has(id), inAncestor = ancestorIds.has(id);
-      if(inAncestor && (!inOurs || !inTheirs)){
-        deletionsRespected++;
-        continue; // existed at the ancestor, missing on at least one side now - respect the deletion, don't resurrect
-      }
-      if(!inOurs && !inTheirs) continue;
-      if(!inAncestor && inOurs && !inTheirs) addedFromOurs++;
-      if(!inAncestor && inTheirs && !inOurs) addedFromTheirs++;
-      kept.push(inOurs ? oursMap.get(id) : theirsMap.get(id));
-    }
-    return { items: kept, addedFromOurs, addedFromTheirs, deletionsRespected };
-  }
-  function mergeDaysObj(ancestorDays, oursDays, theirsDays){
-    ancestorDays = ancestorDays || {}; oursDays = oursDays || {}; theirsDays = theirsDays || {};
-    const allDates = new Set([...Object.keys(oursDays), ...Object.keys(theirsDays), ...Object.keys(ancestorDays)]);
-    const merged = {};
-    let addedSessionsFromOurs = 0, addedSessionsFromTheirs = 0, sessionsDeletionsRespected = 0;
-    for(const date of allDates){
-      const a = ancestorDays[date], o = oursDays[date], t = theirsDays[date];
-      const r = mergeById((a && a.sessions) || [], (o && o.sessions) || [], (t && t.sessions) || [], s => s.id);
-      addedSessionsFromOurs += r.addedFromOurs;
-      addedSessionsFromTheirs += r.addedFromTheirs;
-      sessionsDeletionsRespected += r.deletionsRespected;
-      if(!o && !t) continue;
-      merged[date] = {
-        sessions: r.items,
-        targetMinutesAtStart: (o && o.targetMinutesAtStart) || (t && t.targetMinutesAtStart) || (a && a.targetMinutesAtStart) || 240
-      };
-    }
-    return { days: merged, addedSessionsFromOurs, addedSessionsFromTheirs, sessionsDeletionsRespected };
-  }
-  // The unchanged side yields to whichever side actually changed the value since
-  // the ancestor. The "both changed it" branch is unreachable for a plain boolean
-  // (a 2-valued field can't diverge into two different non-ancestor values) - kept
-  // only as a defensive fallback, verified never to fire in practice.
-  function mergeBoolField(a, o, t){
-    if(o === t) return { value: o, conflict: false };
-    if(a === o) return { value: t, conflict: false };
-    if(a === t) return { value: o, conflict: false };
-    return { value: true, conflict: true };
-  }
-  function mergeGoalLogs(ancestorLogs, oursLogs, theirsLogs){
-    ancestorLogs = ancestorLogs || {}; oursLogs = oursLogs || {}; theirsLogs = theirsLogs || {};
-    const allDates = new Set([...Object.keys(oursLogs), ...Object.keys(theirsLogs), ...Object.keys(ancestorLogs)]);
-    const merged = {};
-    let conflictsResolved = 0;
-    for(const date of allDates){
-      const a = ancestorLogs[date] || {}, o = oursLogs[date] || {}, t = theirsLogs[date] || {};
-      const allGoalIds = new Set([...Object.keys(o), ...Object.keys(t), ...Object.keys(a)]);
-      const dayMerged = {};
-      for(const gid of allGoalIds){
-        const r = mergeBoolField(!!a[gid], !!o[gid], !!t[gid]);
-        dayMerged[gid] = r.value;
-        if(r.conflict) conflictsResolved++;
-      }
-      merged[date] = dayMerged;
-    }
-    return { logs: merged, conflictsResolved };
-  }
-  function mergeGoalsList(ancestorGoals, oursGoals, theirsGoals){
-    ancestorGoals = ancestorGoals || []; oursGoals = oursGoals || []; theirsGoals = theirsGoals || [];
-    const byId = mergeById(ancestorGoals, oursGoals, theirsGoals, g=>g.id);
-    const ancestorMap = new Map(ancestorGoals.map(g=>[g.id,g]));
-    const oursMap = new Map(oursGoals.map(g=>[g.id,g]));
-    const theirsMap = new Map(theirsGoals.map(g=>[g.id,g]));
-    let archiveConflicts = 0;
-    const merged = byId.items.map(g=>{
-      const id = g.id, o = oursMap.get(id), t = theirsMap.get(id);
-      if(!o || !t) return g;
-      const a = ancestorMap.get(id);
-      const r = mergeBoolField(a ? !!a.archived : false, !!o.archived, !!t.archived);
-      if(r.conflict) archiveConflicts++;
-      return { ...o, archived: r.value };
-    });
-    return { goals: merged, addedFromOurs: byId.addedFromOurs, addedFromTheirs: byId.addedFromTheirs, archiveConflicts };
-  }
-  function mergeSettingsObj(ancestorSettings, oursSettings, theirsSettings){
-    ancestorSettings = ancestorSettings || {}; oursSettings = oursSettings || {}; theirsSettings = theirsSettings || {};
-    const merged = { ...oursSettings };
-    let settingsConflicts = 0;
-    ['catDate','dailyTargetMinutes'].forEach(f=>{
-      const a = ancestorSettings[f], o = oursSettings[f], t = theirsSettings[f];
-      if(o === t){ merged[f] = o; return; }
-      if(a === o){ merged[f] = t; return; }
-      if(a === t){ merged[f] = o; return; }
-      merged[f] = o; settingsConflicts++; // arbitrary tie-break, low-stakes and instantly re-editable
-    });
-    const aTP = ancestorSettings.targetPercentile || {}, oTP = oursSettings.targetPercentile || {}, tTP = theirsSettings.targetPercentile || {};
-    const mergedTP = {};
-    ['VARC','Quant','LRDI','Overall'].forEach(sec=>{
-      const a = aTP[sec], o = oTP[sec], t = tTP[sec];
-      if(o === t){ mergedTP[sec] = o; return; }
-      if(a === o){ mergedTP[sec] = t; return; }
-      if(a === t){ mergedTP[sec] = o; return; }
-      mergedTP[sec] = o; settingsConflicts++;
-    });
-    merged.targetPercentile = mergedTP;
-    return { settings: merged, settingsConflicts };
-  }
-  // Guards against a corrupted or unexpectedly-shaped ancestor snapshot (e.g. valid
-  // JSON that isn't actually an object) being silently treated as "an empty
-  // ancestor". That would be worse than having no ancestor at all: every existing
-  // item would look like a brand-new addition instead of a possible deletion,
-  // defeating the entire reason this exists. Any shape mismatch here must fall
-  // back to no-merge, never to a best-effort guess.
-  function isValidAncestorShape(a){
-    return !!a && typeof a === 'object' && !Array.isArray(a) &&
-      (a.tests === undefined || Array.isArray(a.tests)) &&
-      (a.days === undefined || (typeof a.days === 'object' && a.days !== null && !Array.isArray(a.days))) &&
-      (a.goals === undefined || Array.isArray(a.goals)) &&
-      (a.goalLogs === undefined || (typeof a.goalLogs === 'object' && a.goalLogs !== null && !Array.isArray(a.goalLogs))) &&
-      (a.settings === undefined || (typeof a.settings === 'object' && a.settings !== null && !Array.isArray(a.settings)));
-  }
-  function computeThreeWayMerge(ancestor, ours, theirs){
-    const testsResult = mergeById(ancestor.tests, ours.tests, theirs.tests, t=>t.id);
-    const daysResult = mergeDaysObj(ancestor.days, ours.days, theirs.days);
-    const goalLogsResult = mergeGoalLogs(ancestor.goalLogs, ours.goalLogs, theirs.goalLogs);
-    const goalsResult = mergeGoalsList(ancestor.goals, ours.goals, theirs.goals);
-    const settingsResult = mergeSettingsObj(ancestor.settings, ours.settings, theirs.settings);
-    const merged = {
-      settings: settingsResult.settings,
-      days: daysResult.days,
-      tests: testsResult.items,
-      activeSession: ours.activeSession || null, // ephemeral timer state - not merge-worthy, just carry ours
-      goals: goalsResult.goals,
-      goalLogs: goalLogsResult.logs,
-      lastModified: Date.now()
-    };
-    const summary = {
-      newTestsFromOurs: testsResult.addedFromOurs, newTestsFromTheirs: testsResult.addedFromTheirs,
-      testDeletionsRespected: testsResult.deletionsRespected,
-      newSessionsFromOurs: daysResult.addedSessionsFromOurs, newSessionsFromTheirs: daysResult.addedSessionsFromTheirs,
-      sessionDeletionsRespected: daysResult.sessionsDeletionsRespected,
-      goalLogConflictsResolved: goalLogsResult.conflictsResolved,
-      newGoalsFromOurs: goalsResult.addedFromOurs, newGoalsFromTheirs: goalsResult.addedFromTheirs,
-      goalArchiveConflicts: goalsResult.archiveConflicts,
-      settingsConflicts: settingsResult.settingsConflicts
-    };
-    return { merged, summary };
-  }
-  function describeMergeSummary(summary){
-    const parts = [];
-    const newOurs = summary.newTestsFromOurs + summary.newSessionsFromOurs + summary.newGoalsFromOurs;
-    const newTheirs = summary.newTestsFromTheirs + summary.newSessionsFromTheirs + summary.newGoalsFromTheirs;
-    if(newOurs) parts.push(`keep ${newOurs} new item${newOurs>1?'s':''} from this device`);
-    if(newTheirs) parts.push(`keep ${newTheirs} new item${newTheirs>1?'s':''} from the cloud`);
-    const deletions = summary.testDeletionsRespected + summary.sessionDeletionsRespected;
-    if(deletions) parts.push(`respect ${deletions} deletion${deletions>1?'s':''} already made`);
-    const conflicts = summary.goalLogConflictsResolved + summary.goalArchiveConflicts + summary.settingsConflicts;
-    if(conflicts) parts.push(`auto-resolve ${conflicts} tie${conflicts>1?'s':''}`);
-    if(!parts.length) return 'The two sides only differ in bookkeeping — merging is safe either way.';
-    return 'Merging would ' + parts.join(', ') + '. No test entries, sessions, or goals get dropped.';
-  }
-
   function applyRemote(remoteBlob, remoteTs, remoteVersion){
     data = normalizeData(remoteBlob);
     if(typeof data.lastModified !== 'number' || data.lastModified <= 0) data.lastModified = remoteTs || 0;
@@ -995,6 +906,7 @@
     renderAll();
     renderTestsPage();
     renderGoalsPage();
+    renderPracticePage();
   }
 
   function showConflictButtons(show){
@@ -1070,40 +982,15 @@
             // do NOT overwrite it with a false claim of success
           }
         } else {
-          // both sides changed since they last agreed - genuine conflict.
-          // Try to compute a safe 3-way merge using this device's last-agreed
-          // snapshot as the reference point; only offer it if that snapshot
-          // actually exists and the merge computes without error, so a device
-          // syncing for the first time (or one whose snapshot got cleared) still
-          // falls back to exactly the original manual choice, unchanged.
+          // both sides changed since they last agreed - genuine conflict, ask explicitly
           pendingCloudConflict = { data: remote, last_modified: remoteTs, version: row.version || 0 };
-          pendingMerge = null;
-          try{
-            const rawAncestor = localStorage.getItem('lastSyncedSnapshot');
-            if(rawAncestor){
-              const ancestor = JSON.parse(rawAncestor);
-              if(isValidAncestorShape(ancestor)){
-                const { merged, summary } = computeThreeWayMerge(ancestor, data, remote);
-                pendingMerge = { merged, summary };
-              }
-            }
-          }catch(e){ pendingMerge = null; }
-
           const localRichness = dataRichness(data);
           const remoteRichness = dataRichness(remote);
           const localWhen = localTs ? new Date(localTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
           const remoteWhen = remoteTs ? new Date(remoteTs).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : 'unknown';
           const detailEl = document.getElementById('conflictDetail');
-          const mergeBtn = document.getElementById('useMergeBtn');
-          let detailText = `Both this device and the cloud have changes since they last matched. This device: ${localRichness} records, last saved ${localWhen}. Cloud: ${remoteRichness} records, last saved ${remoteWhen}.`;
-          if(pendingMerge){
-            detailText += ' ' + describeMergeSummary(pendingMerge.summary);
-            if(mergeBtn) mergeBtn.classList.remove('hidden');
-          } else {
-            detailText += ' Pick which to keep — the other side will be overwritten.';
-            if(mergeBtn) mergeBtn.classList.add('hidden');
-          }
-          if(detailEl) detailEl.textContent = detailText;
+          if(detailEl) detailEl.textContent =
+            `Both this device and the cloud have changes since they last matched. This device: ${localRichness} records, last saved ${localWhen}. Cloud: ${remoteRichness} records, last saved ${remoteWhen}. Pick which to keep — the other side will be overwritten.`;
           setSyncStatus('Changes on both sides — pick which to keep below.', 'err');
           showConflictButtons(true);
         }
@@ -1116,24 +1003,6 @@
     if(syncBtn) syncBtn.disabled = false;
   }
 
-  document.getElementById('useMergeBtn').addEventListener('click', async ()=>{
-    if(!pendingMerge || !pendingCloudConflict) return;
-    if(!confirm("Merge both devices' changes and sync? " + describeMergeSummary(pendingMerge.summary))) return;
-    snapshotBackup('force');
-    data = normalizeData(pendingMerge.merged);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    lastKnownVersion = pendingCloudConflict.version || 0; // version seen when the conflict was detected, so the push stays conditional
-    pendingCloudConflict = null;
-    pendingMerge = null;
-    showConflictButtons(false);
-    renderAll();
-    renderTestsPage();
-    renderGoalsPage();
-    const ok = await pushToCloud();
-    if(ok) setSyncStatus("Merged both devices' changes and synced ✓", 'ok');
-    // if the push failed, pushToCloud already set a specific status message - the
-    // merged result is still saved on this device either way, nothing is lost
-  });
   document.getElementById('useCloudBtn').addEventListener('click', ()=>{
     if(!pendingCloudConflict) return;
     snapshotBackup('force');
@@ -1141,7 +1010,6 @@
     setSyncStatus('Switched to the cloud copy ✓', 'ok');
     showConflictButtons(false);
     pendingCloudConflict = null;
-    pendingMerge = null;
   });
   document.getElementById('useLocalBtn').addEventListener('click', async ()=>{
     if(confirm("This overwrites the cloud copy with what's on this device. Continue?")){
@@ -1149,7 +1017,6 @@
       // still safely conditional rather than blind
       lastKnownVersion = pendingCloudConflict ? (pendingCloudConflict.version || 0) : lastKnownVersion;
       pendingCloudConflict = null;
-      pendingMerge = null;
       showConflictButtons(false);
       const ok = await pushToCloud();
       if(ok) setSyncStatus("This device's copy is now the cloud copy ✓", 'ok');
@@ -1558,6 +1425,7 @@
           renderAll();
           renderTestsPage();
           renderGoalsPage();
+          renderPracticePage();
         }
       }catch(err){ alert('Could not read that file. Make sure it is a Grind Log backup JSON.'); }
       e.target.value = '';
@@ -1580,6 +1448,7 @@
         renderAll();
         renderTestsPage();
         renderGoalsPage();
+        renderPracticePage();
         setSyncStatus(localStorage.getItem('syncId') ? 'Reset locally. Tap "Sync now" if you want to reconcile this with the cloud copy — you\'ll be asked to choose.' : 'No Sync ID saved on this device yet.');
       }
     }
@@ -1589,22 +1458,28 @@
   const tabStudyBtn = document.getElementById('tabStudyBtn');
   const tabTestsBtn = document.getElementById('tabTestsBtn');
   const tabGoalsBtn = document.getElementById('tabGoalsBtn');
+  const tabPracticeBtn = document.getElementById('tabPracticeBtn');
   const pageStudy = document.getElementById('page-study');
   const pageTests = document.getElementById('page-tests');
   const pageGoals = document.getElementById('page-goals');
+  const pagePractice = document.getElementById('page-practice');
   function switchTab(name){
     pageStudy.classList.toggle('hidden', name!=='study');
     pageTests.classList.toggle('hidden', name!=='tests');
     pageGoals.classList.toggle('hidden', name!=='goals');
+    pagePractice.classList.toggle('hidden', name!=='practice');
     tabStudyBtn.classList.toggle('active', name==='study');
     tabTestsBtn.classList.toggle('active', name==='tests');
     tabGoalsBtn.classList.toggle('active', name==='goals');
+    tabPracticeBtn.classList.toggle('active', name==='practice');
     if(name==='tests') renderTestsPage();
     if(name==='goals') renderGoalsPage();
+    if(name==='practice') renderPracticePage();
   }
   tabStudyBtn.addEventListener('click', ()=>switchTab('study'));
   tabTestsBtn.addEventListener('click', ()=>switchTab('tests'));
   tabGoalsBtn.addEventListener('click', ()=>switchTab('goals'));
+  tabPracticeBtn.addEventListener('click', ()=>switchTab('practice'));
 
   // ---------- Tests: log form state ----------
   let testType = 'sectional';
@@ -2386,6 +2261,324 @@
     renderGoalCalendar();
     renderGoalDayDetail();
     renderGoalManageLists();
+  }
+
+  // ---------- Practice log: subject > topic > sub-topic, question counts ----------
+  let practiceSubject = 'VARC';
+  let practiceSelectedTopicId = null;
+  let practiceSelectedSubtopicId = null;
+
+  function makeTopicId(){ return 'topic_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function makeSubtopicId(){ return 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function makePracticeLogId(){ return 'plog_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+  function practiceTopicsFor(subject){ return data.practice.topics[subject] || []; }
+  function practiceTopicById(subject, topicId){ return practiceTopicsFor(subject).find(t=>t.id===topicId) || null; }
+
+  // "today" / "yesterday" / "N days ago" for recent gaps, falling back to a plain
+  // date once it's far enough back that a day-count stops being useful at a glance.
+  function daysAgoLabel(dateKeyStr){
+    if(!dateKeyStr) return null;
+    if(dateKeyStr === todayKey()) return 'today';
+    const [y,m,d] = dateKeyStr.split('-').map(Number);
+    const then = new Date(y, m-1, d);
+    const now = new Date(); now.setHours(0,0,0,0);
+    const diffDays = Math.round((now - then) / 86400000);
+    if(diffDays < 0) return dateKeyStr;
+    if(diffDays === 1) return 'yesterday';
+    if(diffDays < 30) return `${diffDays} days ago`;
+    return then.toLocaleDateString(undefined, {dateStyle:'medium'});
+  }
+
+  function renderPracticeSubjectChips(){
+    document.querySelectorAll('#practiceSubjectChips .chip').forEach(chip=>{
+      chip.classList.toggle('active', chip.dataset.subject === practiceSubject);
+    });
+  }
+  function renderPracticeTopicChips(){
+    const wrap = document.getElementById('practiceTopicChips');
+    const topics = practiceTopicsFor(practiceSubject);
+    wrap.innerHTML = topics.map(t=>
+      `<button type="button" class="chip${t.id===practiceSelectedTopicId?' active':''}" data-topic-id="${t.id}">${t.name}</button>`
+    ).join('') || '';
+    wrap.querySelectorAll('.chip').forEach(chip=>{
+      chip.addEventListener('click', ()=>{
+        practiceSelectedTopicId = chip.dataset.topicId;
+        practiceSelectedSubtopicId = null;
+        renderPracticeTopicChips();
+        renderPracticeSubtopicChips();
+      });
+    });
+  }
+  function renderPracticeSubtopicChips(){
+    const wrap = document.getElementById('practiceSubtopicChips');
+    const topic = practiceSelectedTopicId ? practiceTopicById(practiceSubject, practiceSelectedTopicId) : null;
+    const subtopics = topic ? (topic.subtopics || []) : [];
+    wrap.innerHTML = subtopics.map(s=>
+      `<button type="button" class="chip${s.id===practiceSelectedSubtopicId?' active':''}" data-subtopic-id="${s.id}">${s.name}</button>`
+    ).join('') || '';
+    wrap.querySelectorAll('.chip').forEach(chip=>{
+      chip.addEventListener('click', ()=>{
+        practiceSelectedSubtopicId = (chip.dataset.subtopicId === practiceSelectedSubtopicId) ? null : chip.dataset.subtopicId;
+        renderPracticeSubtopicChips();
+      });
+    });
+  }
+
+  document.querySelectorAll('#practiceSubjectChips .chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      practiceSubject = chip.dataset.subject;
+      practiceSelectedTopicId = null;
+      practiceSelectedSubtopicId = null;
+      renderPracticeSubjectChips();
+      renderPracticeTopicChips();
+      renderPracticeSubtopicChips();
+    });
+  });
+
+  document.getElementById('practiceAddTopicBtn').addEventListener('click', ()=>{
+    const input = document.getElementById('practiceNewTopicInput');
+    const name = input.value.trim();
+    if(!name){ alert('Type a topic name first.'); return; }
+    const existing = practiceTopicsFor(practiceSubject);
+    if(existing.some(t=>t.name.toLowerCase()===name.toLowerCase())){
+      alert(`"${name}" already exists for ${practiceSubject} — pick it from the list above instead of adding it again.`);
+      return;
+    }
+    const topic = { id: makeTopicId(), name, subtopics: [] };
+    data.practice.topics[practiceSubject].push(topic);
+    practiceSelectedTopicId = topic.id;
+    practiceSelectedSubtopicId = null;
+    saveData();
+    input.value = '';
+    renderPracticePage();
+  });
+
+  document.getElementById('practiceAddSubtopicBtn').addEventListener('click', ()=>{
+    const input = document.getElementById('practiceNewSubtopicInput');
+    const name = input.value.trim();
+    if(!name){ alert('Type a sub-topic name first.'); return; }
+    if(!practiceSelectedTopicId){ alert('Pick or add a topic first.'); return; }
+    const topic = practiceTopicById(practiceSubject, practiceSelectedTopicId);
+    if(!topic) return;
+    if((topic.subtopics||[]).some(s=>s.name.toLowerCase()===name.toLowerCase())){
+      alert(`"${name}" already exists under ${topic.name} — pick it from the list above instead of adding it again.`);
+      return;
+    }
+    const sub = { id: makeSubtopicId(), name };
+    topic.subtopics.push(sub);
+    practiceSelectedSubtopicId = sub.id;
+    saveData();
+    input.value = '';
+    renderPracticePage();
+  });
+
+  document.getElementById('practiceAddLogBtn').addEventListener('click', ()=>{
+    if(!practiceSelectedTopicId){ alert('Pick or add a topic first.'); return; }
+    const countInput = document.getElementById('practiceCountInput');
+    const count = Math.round(parseFloat(countInput.value));
+    if(!count || count <= 0 || isNaN(count)){ alert('Enter how many questions you solved.'); return; }
+    data.practice.logs.push({
+      id: makePracticeLogId(),
+      date: todayKey(),
+      subject: practiceSubject,
+      topicId: practiceSelectedTopicId,
+      subtopicId: practiceSelectedSubtopicId || null,
+      count
+    });
+    saveData();
+    countInput.value = '';
+    renderPracticePage();
+  });
+
+  function deletePracticeLog(id){
+    if(!confirm('Delete this entry?')) return;
+    data.practice.logs = data.practice.logs.filter(l=>l.id!==id);
+    saveData();
+    renderPracticePage();
+  }
+
+  function deletePracticeTopic(subject, topicId){
+    const topic = practiceTopicById(subject, topicId);
+    if(!topic) return;
+    const logCount = data.practice.logs.filter(l=>l.topicId===topicId).length;
+    const msg = logCount
+      ? `Delete "${topic.name}"? This also removes ${logCount} logged entr${logCount>1?'ies':'y'} under it — that practice history will be gone.`
+      : `Delete "${topic.name}"?`;
+    if(!confirm(msg)) return;
+    data.practice.topics[subject] = data.practice.topics[subject].filter(t=>t.id!==topicId);
+    data.practice.logs = data.practice.logs.filter(l=>l.topicId!==topicId);
+    if(practiceSelectedTopicId===topicId){ practiceSelectedTopicId=null; practiceSelectedSubtopicId=null; }
+    saveData();
+    renderPracticePage();
+  }
+
+  function deletePracticeSubtopic(subject, topicId, subtopicId){
+    const topic = practiceTopicById(subject, topicId);
+    if(!topic) return;
+    const sub = (topic.subtopics||[]).find(s=>s.id===subtopicId);
+    if(!sub) return;
+    const logCount = data.practice.logs.filter(l=>l.subtopicId===subtopicId).length;
+    const msg = logCount
+      ? `Delete "${sub.name}"? ${logCount} logged entr${logCount>1?'ies':'y'} will fold back into the "${topic.name}" total without a sub-topic.`
+      : `Delete "${sub.name}"?`;
+    if(!confirm(msg)) return;
+    topic.subtopics = topic.subtopics.filter(s=>s.id!==subtopicId);
+    data.practice.logs.forEach(l=>{ if(l.subtopicId===subtopicId) l.subtopicId=null; });
+    if(practiceSelectedSubtopicId===subtopicId) practiceSelectedSubtopicId=null;
+    saveData();
+    renderPracticePage();
+  }
+
+  function beginEditTopic(subject, topicId){
+    const row = document.querySelector(`#practiceManageList .goal-manage-row[data-topic-id="${topicId}"]`);
+    const topic = practiceTopicById(subject, topicId);
+    if(!row || !topic) return;
+    row.innerHTML = `
+      <input type="text" class="topic-edit-input" value="${topic.name.replace(/"/g,'&quot;')}">
+      <button class="save-topic-btn">Save</button>
+      <button class="cancel-topic-btn">Cancel</button>`;
+    const input = row.querySelector('.topic-edit-input');
+    input.focus();
+    row.querySelector('.save-topic-btn').addEventListener('click', ()=>{
+      const newName = input.value.trim();
+      if(!newName){ alert('Topic name cannot be empty.'); return; }
+      topic.name = newName;
+      saveData();
+      renderPracticePage();
+    });
+    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderPracticeManageList());
+  }
+
+  function beginEditSubtopic(subject, topicId, subtopicId){
+    const row = document.querySelector(`#practiceManageList .goal-manage-row[data-subtopic-id="${subtopicId}"]`);
+    const topic = practiceTopicById(subject, topicId);
+    const sub = topic && (topic.subtopics||[]).find(s=>s.id===subtopicId);
+    if(!row || !sub) return;
+    row.innerHTML = `
+      <input type="text" class="topic-edit-input" value="${sub.name.replace(/"/g,'&quot;')}">
+      <button class="save-topic-btn">Save</button>
+      <button class="cancel-topic-btn">Cancel</button>`;
+    const input = row.querySelector('.topic-edit-input');
+    input.focus();
+    row.querySelector('.save-topic-btn').addEventListener('click', ()=>{
+      const newName = input.value.trim();
+      if(!newName){ alert('Sub-topic name cannot be empty.'); return; }
+      sub.name = newName;
+      saveData();
+      renderPracticePage();
+    });
+    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderPracticeManageList());
+  }
+
+  function renderPracticeTodayList(){
+    const today = todayKey();
+    const wrap = document.getElementById('practiceTodayList');
+    const emptyNote = document.getElementById('practiceTodayEmpty');
+    const todaysLogs = data.practice.logs.filter(l=>l.date===today);
+    const totalToday = todaysLogs.reduce((s,l)=>s+l.count,0);
+    document.getElementById('practiceTodayLine').textContent =
+      totalToday ? `${totalToday} question${totalToday>1?'s':''} logged today` : 'Nothing logged yet today.';
+    if(!todaysLogs.length){
+      wrap.innerHTML = '';
+      emptyNote.classList.remove('hidden');
+      return;
+    }
+    emptyNote.classList.add('hidden');
+    wrap.innerHTML = todaysLogs.map(l=>{
+      const topic = practiceTopicById(l.subject, l.topicId);
+      const topicName = topic ? topic.name : '(deleted topic)';
+      const sub = topic && l.subtopicId ? (topic.subtopics||[]).find(s=>s.id===l.subtopicId) : null;
+      const label = sub ? `${l.subject} · ${topicName} · ${sub.name}` : `${l.subject} · ${topicName}`;
+      return `<div class="goal-manage-row" data-log-id="${l.id}">
+        <span class="goal-text">${label} — ${l.count}</span>
+        <button class="remove del-practice-log-btn" data-log-id="${l.id}">Remove</button>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.del-practice-log-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deletePracticeLog(btn.dataset.logId));
+    });
+  }
+
+  function renderPracticeCoverage(){
+    const wrap = document.getElementById('practiceCoverageList');
+    const emptyNote = document.getElementById('practiceCoverageEmpty');
+    const subjects = ['VARC','Quant','LRDI'];
+    const anyTopics = subjects.some(sec => practiceTopicsFor(sec).length);
+    if(!anyTopics){
+      wrap.innerHTML = '';
+      emptyNote.classList.remove('hidden');
+      return;
+    }
+    emptyNote.classList.add('hidden');
+    wrap.innerHTML = subjects.map(sec=>{
+      const topics = practiceTopicsFor(sec);
+      if(!topics.length) return '';
+      const rows = topics.map(t=>{
+        const topicLogs = data.practice.logs.filter(l=>l.topicId===t.id);
+        const total = topicLogs.reduce((s,l)=>s+l.count,0);
+        const lastDate = topicLogs.length ? topicLogs.map(l=>l.date).sort().slice(-1)[0] : null;
+        const statusLine = total===0
+          ? '<span class="pct-miss">Not started</span>'
+          : `${total} solved · last practiced ${daysAgoLabel(lastDate)}`;
+        const subRows = (t.subtopics||[]).map(s=>{
+          const subTotal = data.practice.logs.filter(l=>l.subtopicId===s.id).reduce((sum,l)=>sum+l.count,0);
+          return `<div class="sec-sub" style="padding-left:14px;">${s.name}: ${subTotal}</div>`;
+        }).join('');
+        return `<div class="trend-card" style="margin-bottom:8px;">
+          <div class="sec-name">${t.name}</div>
+          <div class="sec-sub">${statusLine}</div>
+          ${subRows}
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:14px;"><div class="sec-tag ${sec}" style="margin-bottom:8px; display:inline-block;">${sec}</div>${rows}</div>`;
+    }).join('');
+  }
+
+  function renderPracticeManageList(){
+    const wrap = document.getElementById('practiceManageList');
+    const subjects = ['VARC','Quant','LRDI'];
+    wrap.innerHTML = subjects.map(sec=>{
+      const topics = practiceTopicsFor(sec);
+      if(!topics.length) return `<div class="empty-note" style="margin-bottom:10px;">${sec}: no topics yet.</div>`;
+      const rows = topics.map(t=>{
+        const subRows = (t.subtopics||[]).map(s=>`
+          <div class="goal-manage-row" data-subtopic-id="${s.id}" style="margin-left:16px; background:var(--surface);">
+            <span class="goal-text">${s.name}</span>
+            <button class="edit-subtopic-btn" data-subject="${sec}" data-topic-id="${t.id}" data-subtopic-id="${s.id}">Edit</button>
+            <button class="remove del-subtopic-btn" data-subject="${sec}" data-topic-id="${t.id}" data-subtopic-id="${s.id}">Remove</button>
+          </div>`).join('');
+        return `
+          <div class="goal-manage-row" data-topic-id="${t.id}">
+            <span class="goal-text">${t.name}</span>
+            <button class="edit-topic-btn" data-subject="${sec}" data-topic-id="${t.id}">Edit</button>
+            <button class="remove del-topic-btn" data-subject="${sec}" data-topic-id="${t.id}">Remove</button>
+          </div>${subRows}`;
+      }).join('');
+      return `<div style="margin-bottom:14px;"><div class="sec-tag ${sec}" style="margin-bottom:8px; display:inline-block;">${sec}</div>${rows}</div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.del-topic-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deletePracticeTopic(btn.dataset.subject, btn.dataset.topicId));
+    });
+    wrap.querySelectorAll('.del-subtopic-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deletePracticeSubtopic(btn.dataset.subject, btn.dataset.topicId, btn.dataset.subtopicId));
+    });
+    wrap.querySelectorAll('.edit-topic-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> beginEditTopic(btn.dataset.subject, btn.dataset.topicId));
+    });
+    wrap.querySelectorAll('.edit-subtopic-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> beginEditSubtopic(btn.dataset.subject, btn.dataset.topicId, btn.dataset.subtopicId));
+    });
+  }
+
+  function renderPracticePage(){
+    renderPracticeSubjectChips();
+    renderPracticeTopicChips();
+    renderPracticeSubtopicChips();
+    renderPracticeTodayList();
+    renderPracticeCoverage();
+    renderPracticeManageList();
   }
 
   // ---------- Render all ----------
