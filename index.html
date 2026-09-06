@@ -177,6 +177,10 @@
   .trend-badge.trend-down{background:rgba(232,122,90,0.16); color:#e87a5a;}
   .trend-badge.trend-flat{background:rgba(139,136,144,0.16); color:var(--text-dim);}
   .errtag-chips .chip{padding:5px 10px; font-size:11px;}
+  .coverage-subject-header{width:100%; display:flex; align-items:center; gap:8px; background:var(--surface-2); border:none; border-radius:10px; padding:10px 12px; cursor:pointer; text-align:left; font-family:inherit; color:var(--text);}
+  .coverage-summary{flex:1; font-size:12px; color:var(--text-dim);}
+  .coverage-caret{color:var(--text-faint); font-size:12px; flex-shrink:0;}
+  .coverage-subject-body{margin-top:8px;}
 
   .goal-progress{font-size:13px; color:var(--text-dim); margin-bottom:12px;}
   .goal-item{display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface-2); border-radius:8px; margin-bottom:8px;}
@@ -609,7 +613,19 @@
 
   <section>
     <h2>Manage topics</h2>
-    <div id="practiceManageList"></div>
+    <div class="field">
+      <label>Subject</label>
+      <div class="filter-chips" id="manageSubjectChips">
+        <button type="button" class="chip active" data-subject="VARC">VARC</button>
+        <button type="button" class="chip" data-subject="Quant">Quant</button>
+        <button type="button" class="chip" data-subject="LRDI">LRDI</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Topic</label>
+      <select id="manageTopicSelect" class="select-input"></select>
+    </div>
+    <div id="manageTopicDetail"></div>
   </section>
 
   </div><!-- /page-practice -->
@@ -2352,6 +2368,9 @@
   let practiceSubject = 'VARC';
   let practiceSelectedTopicId = null;
   let practiceSelectedSubtopicId = null;
+  let manageSubject = 'VARC';
+  let manageSelectedTopicId = null;
+  let coverageOpenSubject = null;
 
   function makeTopicId(){ return 'topic_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
   function makeSubtopicId(){ return 'sub_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -2535,7 +2554,7 @@
   }
 
   function beginEditTopic(subject, topicId){
-    const row = document.querySelector(`#practiceManageList .goal-manage-row[data-topic-id="${topicId}"]`);
+    const row = document.querySelector(`#manageTopicDetail .goal-manage-row[data-topic-id="${topicId}"]`);
     const topic = practiceTopicById(subject, topicId);
     if(!row || !topic) return;
     row.innerHTML = `
@@ -2551,11 +2570,11 @@
       saveData();
       renderPracticePage();
     });
-    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderPracticeManageList());
+    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderManageTopicDetail());
   }
 
   function beginEditSubtopic(subject, topicId, subtopicId){
-    const row = document.querySelector(`#practiceManageList .goal-manage-row[data-subtopic-id="${subtopicId}"]`);
+    const row = document.querySelector(`#manageTopicDetail .goal-manage-row[data-subtopic-id="${subtopicId}"]`);
     const topic = practiceTopicById(subject, topicId);
     const sub = topic && (topic.subtopics||[]).find(s=>s.id===subtopicId);
     if(!row || !sub) return;
@@ -2572,7 +2591,7 @@
       saveData();
       renderPracticePage();
     });
-    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderPracticeManageList());
+    row.querySelector('.cancel-topic-btn').addEventListener('click', ()=> renderManageTopicDetail());
   }
 
   function renderPracticeTodayList(){
@@ -2623,6 +2642,10 @@
     wrap.innerHTML = subjects.map(sec=>{
       const topics = practiceTopicsFor(sec);
       if(!topics.length) return '';
+      const totalAll = topics.reduce((s,t)=> s + data.practice.logs.filter(l=>l.topicId===t.id).reduce((ss,l)=>ss+l.count,0), 0);
+      const notStartedCount = topics.filter(t=> !data.practice.logs.some(l=>l.topicId===t.id)).length;
+      const isOpen = coverageOpenSubject === sec;
+      const summaryLine = `${topics.length} topic${topics.length>1?'s':''} · ${totalAll} solved${notStartedCount ? ' · ' + notStartedCount + ' not started' : ''}`;
       const rows = topics.map(t=>{
         const topicLogs = data.practice.logs.filter(l=>l.topicId===t.id);
         const total = topicLogs.reduce((s,l)=>s+l.count,0);
@@ -2640,33 +2663,60 @@
           ${subRows}
         </div>`;
       }).join('');
-      return `<div style="margin-bottom:14px;"><div class="sec-tag ${sec}" style="margin-bottom:8px; display:inline-block;">${sec}</div>${rows}</div>`;
+      return `<div class="coverage-subject-group" style="margin-bottom:10px;">
+        <button type="button" class="coverage-subject-header" data-subject="${sec}">
+          <span class="sec-tag ${sec}">${sec}</span>
+          <span class="coverage-summary">${summaryLine}</span>
+          <span class="coverage-caret">${isOpen?'▾':'▸'}</span>
+        </button>
+        <div class="coverage-subject-body${isOpen?'':' hidden'}">${rows}</div>
+      </div>`;
     }).join('');
+    wrap.querySelectorAll('.coverage-subject-header').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const sec = btn.dataset.subject;
+        coverageOpenSubject = (coverageOpenSubject === sec) ? null : sec;
+        renderPracticeCoverage();
+      });
+    });
   }
 
-  function renderPracticeManageList(){
-    const wrap = document.getElementById('practiceManageList');
-    const subjects = ['VARC','Quant','LRDI'];
-    wrap.innerHTML = subjects.map(sec=>{
-      const topics = practiceTopicsFor(sec);
-      if(!topics.length) return `<div class="empty-note" style="margin-bottom:10px;">${sec}: no topics yet.</div>`;
-      const rows = topics.map(t=>{
-        const subRows = (t.subtopics||[]).map(s=>`
-          <div class="goal-manage-row" data-subtopic-id="${s.id}" style="margin-left:16px; background:var(--surface);">
-            <span class="goal-text">${s.name}</span>
-            <button class="edit-subtopic-btn" data-subject="${sec}" data-topic-id="${t.id}" data-subtopic-id="${s.id}">Edit</button>
-            <button class="remove del-subtopic-btn" data-subject="${sec}" data-topic-id="${t.id}" data-subtopic-id="${s.id}">Remove</button>
-          </div>`).join('');
-        return `
-          <div class="goal-manage-row" data-topic-id="${t.id}">
-            <span class="goal-text">${t.name}</span>
-            <button class="edit-topic-btn" data-subject="${sec}" data-topic-id="${t.id}">Edit</button>
-            <button class="remove del-topic-btn" data-subject="${sec}" data-topic-id="${t.id}">Remove</button>
-          </div>${subRows}`;
-      }).join('');
-      return `<div style="margin-bottom:14px;"><div class="sec-tag ${sec}" style="margin-bottom:8px; display:inline-block;">${sec}</div>${rows}</div>`;
-    }).join('');
-
+  function renderManageSubjectChips(){
+    document.querySelectorAll('#manageSubjectChips .chip').forEach(chip=>{
+      chip.classList.toggle('active', chip.dataset.subject === manageSubject);
+    });
+  }
+  function renderManageTopicSelect(){
+    const sel = document.getElementById('manageTopicSelect');
+    const topics = practiceTopicsFor(manageSubject);
+    sel.innerHTML = '<option value="">— pick a topic to manage —</option>' +
+      topics.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    sel.value = manageSelectedTopicId || '';
+  }
+  function renderManageTopicDetail(){
+    const wrap = document.getElementById('manageTopicDetail');
+    if(!manageSelectedTopicId){
+      wrap.innerHTML = practiceTopicsFor(manageSubject).length
+        ? `<div class="empty-note">Pick a topic above to rename or remove it.</div>`
+        : `<div class="empty-note">No topics yet for ${manageSubject}.</div>`;
+      return;
+    }
+    const topic = practiceTopicById(manageSubject, manageSelectedTopicId);
+    if(!topic){ manageSelectedTopicId = null; renderManageTopicSelect(); renderManageTopicDetail(); return; }
+    const subRows = (topic.subtopics||[]).map(s => `
+      <div class="goal-manage-row" data-subtopic-id="${s.id}" style="margin-left:16px; background:var(--surface);">
+        <span class="goal-text">${s.name}</span>
+        <button class="edit-subtopic-btn" data-subject="${manageSubject}" data-topic-id="${topic.id}" data-subtopic-id="${s.id}">Edit</button>
+        <button class="remove del-subtopic-btn" data-subject="${manageSubject}" data-topic-id="${topic.id}" data-subtopic-id="${s.id}">Remove</button>
+      </div>`).join('');
+    wrap.innerHTML = `
+      <div class="goal-manage-row" data-topic-id="${topic.id}">
+        <span class="goal-text">${topic.name}</span>
+        <button class="edit-topic-btn" data-subject="${manageSubject}" data-topic-id="${topic.id}">Edit</button>
+        <button class="remove del-topic-btn" data-subject="${manageSubject}" data-topic-id="${topic.id}">Remove</button>
+      </div>
+      ${subRows || '<div class="empty-note" style="margin-left:16px;">No sub-topics under this one yet.</div>'}
+    `;
     wrap.querySelectorAll('.del-topic-btn').forEach(btn=>{
       btn.addEventListener('click', ()=> deletePracticeTopic(btn.dataset.subject, btn.dataset.topicId));
     });
@@ -2680,6 +2730,19 @@
       btn.addEventListener('click', ()=> beginEditSubtopic(btn.dataset.subject, btn.dataset.topicId, btn.dataset.subtopicId));
     });
   }
+  document.querySelectorAll('#manageSubjectChips .chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      manageSubject = chip.dataset.subject;
+      manageSelectedTopicId = null;
+      renderManageSubjectChips();
+      renderManageTopicSelect();
+      renderManageTopicDetail();
+    });
+  });
+  document.getElementById('manageTopicSelect').addEventListener('change', (e)=>{
+    manageSelectedTopicId = e.target.value || null;
+    renderManageTopicDetail();
+  });
 
   function renderPracticePage(){
     // Defends against a stale selection pointing at a topic/subtopic that no longer
@@ -2697,12 +2760,18 @@
         practiceSelectedSubtopicId = null;
       }
     }
+    // Same defensive validation for the Manage section's independent selection.
+    if(manageSelectedTopicId && !practiceTopicById(manageSubject, manageSelectedTopicId)){
+      manageSelectedTopicId = null;
+    }
     renderPracticeSubjectChips();
     renderPracticeTopicSelect();
     renderPracticeSubtopicSelect();
     renderPracticeTodayList();
     renderPracticeCoverage();
-    renderPracticeManageList();
+    renderManageSubjectChips();
+    renderManageTopicSelect();
+    renderManageTopicDetail();
   }
 
   // ---------- Render all ----------
