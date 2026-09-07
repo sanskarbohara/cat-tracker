@@ -483,7 +483,17 @@
   </section>
 
   <section>
-    <h2>Target percentile</h2>
+    <h2>Target score</h2>
+    <div class="empty-note">Score doesn't depend on which mock's population you happened to be compared against — it's just marks earned (+3 correct, −1 wrong), so it's the steadiest thing to track session to session. This is your primary target. Percentile below is a softer, secondary read — worth glancing at, not the thing to optimize.</div>
+    <div class="field" style="margin-top:12px;">
+      <label for="targetScoreInput">Overall score you're aiming for</label>
+      <input type="number" inputmode="decimal" id="targetScoreInput" min="0" step="1" placeholder="e.g. 110">
+    </div>
+    <div id="scoreGapResult"></div>
+  </section>
+
+  <section>
+    <h2>Percentile estimate <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional, secondary)</span></h2>
     <div class="empty-note">One honest limit up front: CAT's overall percentile comes from your combined <em>scaled score</em>, not from a formula that combines sectional percentiles — that exact mapping isn't published by CAT or anyone else, so no tool can give you a guaranteed-official split. What this gives you instead is a statistically grounded <strong>estimate</strong>: it treats percentiles as points on a standard bell curve (the same principle behind every score-vs-percentile table you'll see), and works out what each section would need to average out to your overall goal — asking less of sections you're already strong in and more of the ones dragging you down. "Current standing" below is based on full mocks once you've logged any — a mock under real time pressure across all three sections is a more honest read than an isolated sectional drill — and only falls back to sectional-only data until your first mock is in.</div>
     <div class="field" style="margin-top:12px;">
       <label for="overallTargetInput">Overall percentile you're aiming for</label>
@@ -657,6 +667,8 @@
     ['VARC','Quant','LRDI','Overall'].forEach(sec=>{
       if(raw.settings.targetPercentile[sec]===undefined) raw.settings.targetPercentile[sec] = null;
     });
+    raw.settings.targetScore = (raw.settings.targetScore!==null && raw.settings.targetScore!==undefined && !isNaN(parseFloat(raw.settings.targetScore)))
+      ? parseFloat(raw.settings.targetScore) : null;
     raw.days = (raw.days && typeof raw.days==='object') ? raw.days : {};
     Object.keys(raw.days).forEach(k=>{
       if(!raw.days[k] || !Array.isArray(raw.days[k].sessions)) raw.days[k] = {sessions:[], targetMinutesAtStart: raw.settings.dailyTargetMinutes};
@@ -2006,49 +2018,30 @@
     return { value: allEntries.reduce((s,e)=>s+e.percentile,0)/allEntries.length, basis:'sectional', n: allEntries.length };
   }
 
-  // Fits percentile as a function of correct-answer count, using only this section's
-  // own logged history (same mock-preferred basis as the current-standing average
-  // above). This is deliberately NOT a universal CAT score-to-percentile table - no
-  // reliable one exists (see the caveat text above this calculator). It's a purely
-  // personal, internally consistent read of "in the mocks I actually take, how much
-  // does my percentile move when I get more right" - the one thing this data can
-  // honestly support - turned into an answer-count number instead of an abstract
-  // percentile point. Needs at least 4 attempts with both correct and percentile
-  // logged, and a positive correct->percentile relationship, or it declines to guess.
-  function fitCorrectPercentileRegression(entries){
-    const pts = (entries||[]).filter(e => e.correct!==null && e.correct!==undefined);
-    if(pts.length < 4) return null;
-    const n = pts.length;
-    const xMean = pts.reduce((s,e)=>s+e.correct,0)/n;
-    const yMean = pts.reduce((s,e)=>s+e.percentile,0)/n;
-    let num=0, den=0;
-    pts.forEach(e=>{ num += (e.correct-xMean)*(e.percentile-yMean); den += (e.correct-xMean)*(e.correct-xMean); });
-    if(den===0) return null;
-    const slope = num/den;
-    if(slope <= 0) return null; // no clear "more correct -> higher percentile" signal in this data yet
-    const intercept = yMean - slope*xMean;
-    return { slope, intercept, n, avgCorrect: xMean, maxObservedPct: Math.max(...pts.map(e=>e.percentile)) };
-  }
-  function correctAnswerGap(section, targetPct){
-    // Independent of which basis (mock-preferred) is shown as "current standing" -
-    // the regression just needs enough raw points to fit a line, so it tries the
-    // same mock-preferred set first, then falls back to everything logged for this
-    // section rather than getting stuck on "not enough data" just because the one
-    // or two mocks logged so far didn't have correct/wrong filled in, while a dozen
-    // sectionals sat right there unused.
-    const mockEntries = data.tests.filter(t=>t.section===section && t.type==='mock' && t.percentile!==null && t.percentile!==undefined);
-    let reg = fitCorrectPercentileRegression(mockEntries);
-    if(!reg){
-      const allEntries = data.tests.filter(t=>t.section===section && t.percentile!==null && t.percentile!==undefined);
-      reg = fitCorrectPercentileRegression(allEntries);
+  // Score-based helpers. Unlike percentile, score isn't relative to who else sat a
+  // given mock, so these are plain averages/maximums over logged data - no fitting,
+  // no extrapolation, nothing that can produce a number further from reality the
+  // further out you ask it to reach. Mock-preferred, same reasoning as percentile:
+  // a mock under real time pressure across all sections reads more honestly than an
+  // isolated sectional drill, so it's used whenever any exist for that section.
+  function sectionCurrentAvgScore(section){
+    const mockEntries = data.tests.filter(t=>t.section===section && t.type==='mock');
+    if(mockEntries.length){
+      return { value: mockEntries.reduce((s,e)=>s+e.score,0)/mockEntries.length, basis:'mock', n: mockEntries.length };
     }
-    if(!reg) return null;
-    const requiredCorrect = (targetPct - reg.intercept) / reg.slope;
-    return {
-      correctGap: requiredCorrect - reg.avgCorrect,
-      n: reg.n,
-      farExtrapolation: (targetPct - reg.maxObservedPct) > 15
-    };
+    const allEntries = data.tests.filter(t=>t.section===section);
+    if(!allEntries.length) return null;
+    return { value: allEntries.reduce((s,e)=>s+e.score,0)/allEntries.length, basis:'sectional', n: allEntries.length };
+  }
+  function sectionBestScore(section){
+    const entries = data.tests.filter(t=>t.section===section);
+    if(!entries.length) return null;
+    return Math.max(...entries.map(e=>e.score));
+  }
+  function sectionAvgAccuracy(section){
+    const entries = data.tests.filter(t=>t.section===section && t.attempted && t.correct!==null && t.correct!==undefined);
+    if(!entries.length) return null;
+    return { value: entries.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/entries.length, n: entries.length };
   }
 
   // Best-ever percentile and accuracy logged for a section, across sectionals and
@@ -2104,14 +2097,14 @@
     if(deltaZ <= 0){
       // Already tracking to clear this goal on average - show current standing as-is,
       // no artificial reduction implied.
-      for(const sec of sections) result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target: current[sec].value, onTrack: true, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec), scoreGap: correctAnswerGap(sec, current[sec].value) };
+      for(const sec of sections) result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target: current[sec].value, onTrack: true, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec) };
       return { sections: result, alreadyOnTrack: true, extremeTarget };
     }
     for(const sec of sections){
       const targetZ = zCurrent[sec] + deltaZ;
       const pct = normalCDF(targetZ) * 100;
       const target = Math.max(1, Math.min(99.99, pct));
-      result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target, gap: target - current[sec].value, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec), scoreGap: correctAnswerGap(sec, target) };
+      result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target, gap: target - current[sec].value, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec) };
     }
     return { sections: result, extremeTarget };
   }
@@ -2154,15 +2147,6 @@
         if(r.bestAcc!==null) bestBits.push(`best accuracy ${r.bestAcc.toFixed(0)}%`);
         if(bestBits.length) detail += ` · ${bestBits.join(' · ')}`;
       }
-      if(r.scoreGap){
-        const roundedGap = Math.round(r.scoreGap.correctGap);
-        detail += roundedGap > 0
-          ? ` · ~+${roundedGap} correct on avg to get there (based on your last ${r.scoreGap.n} attempts)`
-          : ` · already averaging enough correct answers for this`;
-        if(r.scoreGap.farExtrapolation) detail += ' — well outside your logged range, rough extrapolation';
-      } else {
-        detail += ` · log a few more attempts with correct/wrong filled in to estimate the answer-count gap`;
-      }
       html += `<div class="alloc-row">
         <div><div class="alloc-sec">${sec}</div><div class="alloc-detail">${detail}</div></div>
         <div class="alloc-target">${r.target.toFixed(2)}%ile</div>
@@ -2174,12 +2158,64 @@
     renderSectionalTrendCards();
     renderMockTrendCards();
   }
+  function renderScoreGapResult(){
+    const input = document.getElementById('targetScoreInput');
+    const box = document.getElementById('scoreGapResult');
+    const val = parseFloat(input.value);
+    if(!input.value || isNaN(val)){
+      box.innerHTML = '';
+      data.settings.targetScore = null;
+      saveData();
+      return;
+    }
+    data.settings.targetScore = val;
+
+    let html = '<div class="alloc-result">';
+    const overall = sectionCurrentAvgScore('Overall');
+    const overallBest = sectionBestScore('Overall');
+    if(overall){
+      const gap = val - overall.value;
+      const basisNote = overall.basis==='mock' ? `${overall.n} mock${overall.n>1?'s':''}` : `${overall.n} sectional${overall.n>1?'s':''}`;
+      let detail = `avg ${overall.value.toFixed(1)} (${basisNote})`;
+      if(overallBest!==null) detail += ` · best ${overallBest}`;
+      detail += gap > 0 ? ` · +${gap.toFixed(1)} needed` : ` · already averaging your target`;
+      html += `<div class="alloc-row">
+        <div><div class="alloc-sec">Overall</div><div class="alloc-detail">${detail}</div></div>
+        <div class="alloc-target">${val}</div>
+      </div>`;
+    } else {
+      html += `<div class="empty-note" style="margin-bottom:8px;">Log a full mock with an Overall score filled in to see your gap to this target.</div>`;
+    }
+
+    ['VARC','Quant','LRDI'].forEach(sec=>{
+      const cur = sectionCurrentAvgScore(sec);
+      if(!cur) return;
+      const best = sectionBestScore(sec);
+      const acc = sectionAvgAccuracy(sec);
+      const basisNote = cur.basis==='mock' ? `${cur.n} mock${cur.n>1?'s':''}` : `${cur.n} sectional${cur.n>1?'s':''}`;
+      let detail = `avg score ${cur.value.toFixed(1)} (${basisNote})`;
+      if(acc) detail += ` · avg accuracy ${acc.value.toFixed(0)}%`;
+      if(best!==null) detail += ` · best ${best}`;
+      html += `<div class="alloc-row">
+        <div><div class="alloc-sec">${sec}</div><div class="alloc-detail">${detail}</div></div>
+      </div>`;
+    });
+    html += '</div>';
+    box.innerHTML = html;
+    saveData();
+  }
+  document.getElementById('targetScoreInput').addEventListener('input', renderScoreGapResult);
   document.getElementById('overallTargetInput').addEventListener('input', renderAllocationResult);
 
   function renderTestsPage(){
     if(!document.getElementById('testDate').value){
       document.getElementById('testDate').value = todayKey();
     }
+    const savedScoreTarget = data.settings.targetScore;
+    if(savedScoreTarget && !document.getElementById('targetScoreInput').value){
+      document.getElementById('targetScoreInput').value = savedScoreTarget;
+    }
+    renderScoreGapResult();
     const savedOverall = (data.settings.targetPercentile || {}).Overall;
     if(savedOverall && !document.getElementById('overallTargetInput').value){
       document.getElementById('overallTargetInput').value = savedOverall;
