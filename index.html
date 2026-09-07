@@ -2164,8 +2164,10 @@
     const val = parseFloat(input.value);
     if(!input.value || isNaN(val)){
       box.innerHTML = '';
-      data.settings.targetScore = null;
-      saveData();
+      if(data.settings.targetScore !== null){
+        data.settings.targetScore = null;
+        saveData();
+      }
       return;
     }
     data.settings.targetScore = val;
