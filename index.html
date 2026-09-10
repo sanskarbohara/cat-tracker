@@ -87,14 +87,9 @@
   .sync-status.err{color:#e87a5a;}
 
   /* ---------- Section trend cards ---------- */
-  .trend-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .trend-card{background:var(--surface-2); border-radius:10px; padding:12px 14px;}
   .trend-card .sec-name{font-size:12px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;}
-  .trend-card .sec-stats{display:flex; justify-content:space-between; align-items:flex-end;}
-  .trend-card .sec-latest{font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700;}
   .trend-card .sec-sub{font-size:10px; color:var(--text-faint); margin-top:2px;}
-  .trend-card svg{display:block;}
-  .trend-card.empty .sec-latest{color:var(--text-faint); font-size:12px; font-weight:500; font-family:'Inter',sans-serif;}
 
   /* ---------- Filter chips ---------- */
   .filter-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;}
@@ -147,13 +142,6 @@
   .sectional-card-detail b{color:var(--text);}
   .sectional-card-detail .del-btn{float:right;}
 
-  .alloc-result{margin-top:14px;}
-  .alloc-row{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 10px; background:var(--surface-2); border-radius:8px; margin-bottom:6px; font-size:13px;}
-  .alloc-row > div:first-child{flex:1; min-width:0;}
-  .alloc-row .alloc-sec{font-weight:600;}
-  .alloc-row .alloc-detail{font-size:11px; color:var(--text-faint);}
-  .alloc-row .alloc-target{font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--accent); flex-shrink:0;}
-
   .select-input{
     width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
     padding:10px 12px; border-radius:8px; font-size:14px; font-family:'Inter',sans-serif; appearance:none;
@@ -167,7 +155,6 @@
   }
   .detail-toggle:hover{color:var(--accent);}
   .detail-row.hidden{display:none;}
-  .pct-hit{color:var(--success);}
   .pct-miss{color:#e87a5a;}
 
   /* ---------- Tests: score-first command centre ---------- */
@@ -207,6 +194,10 @@
   .score-plan-acc{font:600 12px 'JetBrains Mono',monospace; text-align:right; color:var(--text-dim);}
   .score-plan-acc.low{color:#e87a5a;}
   .score-plan-acc.good{color:var(--success);}
+  .trend-badge{font-size:9px; padding:2px 6px; border-radius:8px; font-weight:700; text-transform:none; letter-spacing:0; font-family:'Inter',sans-serif; display:inline-block; vertical-align:middle;}
+  .trend-badge.trend-up{background:var(--success-dim); color:var(--success);}
+  .trend-badge.trend-down{background:rgba(232,122,90,0.16); color:#e87a5a;}
+  .trend-badge.trend-flat{background:rgba(139,136,144,0.16); color:var(--text-dim);}
   .test-insight{border-left:3px solid var(--accent); padding:2px 0 2px 10px; font-size:12px; line-height:1.5; color:var(--text-dim);}
   .test-insight b{color:var(--text);}
   .test-snapshot-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
@@ -230,12 +221,6 @@
     .test-snapshot-grid{grid-template-columns:1fr;}
   }
 
-  /* ---------- Trend badges ---------- */
-  .trend-card .sec-name{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
-  .trend-badge{font-size:9px; padding:2px 6px; border-radius:8px; font-weight:700; text-transform:none; letter-spacing:0; font-family:'Inter',sans-serif;}
-  .trend-badge.trend-up{background:var(--success-dim); color:var(--success);}
-  .trend-badge.trend-down{background:rgba(232,122,90,0.16); color:#e87a5a;}
-  .trend-badge.trend-flat{background:rgba(139,136,144,0.16); color:var(--text-dim);}
   .errtag-chips .chip{padding:5px 10px; font-size:11px;}
   .coverage-subject-header{width:100%; display:flex; align-items:center; gap:8px; background:var(--surface-2); border:none; border-radius:10px; padding:10px 12px; cursor:pointer; text-align:left; font-family:inherit; color:var(--text);}
   .coverage-summary{flex:1; font-size:12px; color:var(--text-dim);}
@@ -577,38 +562,6 @@
   </div>
 
   <div id="testsHistory" class="test-view hidden">
-  <section class="hidden" aria-hidden="true">
-    <h2>Sectional trends</h2>
-    <div class="empty-note" id="sectionalCountLine" style="margin-bottom:10px;"></div>
-    <div class="trend-grid" id="sectionalTrendGrid"></div>
-  </section>
-
-  <section class="hidden" aria-hidden="true">
-    <h2>Mock trends</h2>
-    <div class="empty-note" id="mockCountLine" style="margin-bottom:10px;"></div>
-    <div class="trend-grid" id="mockTrendGrid"></div>
-  </section>
-
-  <section class="hidden" aria-hidden="true">
-    <h2>Target score</h2>
-    <div class="empty-note">Score doesn't depend on which mock's population you happened to be compared against — it's just marks earned (+3 correct, −1 wrong), so it's the steadiest thing to track session to session. This is your primary target. Percentile below is a softer, secondary read — worth glancing at, not the thing to optimize.</div>
-    <div class="field" style="margin-top:12px;">
-      <label for="targetScoreLegacy">Overall score you're aiming for</label>
-      <input type="number" inputmode="decimal" id="targetScoreLegacy" min="0" step="1" placeholder="e.g. 110">
-    </div>
-    <div id="scoreGapLegacy"></div>
-  </section>
-
-  <section class="hidden" aria-hidden="true">
-    <h2>Percentile estimate <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional, secondary)</span></h2>
-    <div class="empty-note">One honest limit up front: CAT's overall percentile comes from your combined <em>scaled score</em>, not from a formula that combines sectional percentiles — that exact mapping isn't published by CAT or anyone else, so no tool can give you a guaranteed-official split. What this gives you instead is a statistically grounded <strong>estimate</strong>: it treats percentiles as points on a standard bell curve (the same principle behind every score-vs-percentile table you'll see), and works out what each section would need to average out to your overall goal — asking less of sections you're already strong in and more of the ones dragging you down. "Current standing" below is based on full mocks once you've logged any — a mock under real time pressure across all three sections is a more honest read than an isolated sectional drill — and only falls back to sectional-only data until your first mock is in.</div>
-    <div class="field" style="margin-top:12px;">
-      <label for="overallTargetInput">Overall percentile you're aiming for</label>
-      <input type="number" inputmode="decimal" id="overallTargetInput" min="1" max="99.99" step="0.01" placeholder="e.g. 99">
-    </div>
-    <div id="percentileAllocationResult"></div>
-  </section>
-
   <section>
     <h2>Mock reports</h2>
     <div class="empty-note" id="mockReportsEmpty">No full mocks logged yet.</div>
@@ -974,6 +927,7 @@
         localStorage.removeItem('lastSyncedModified');
         localStorage.removeItem('lastSyncedVersion');
         lastKnownVersion = 0;
+        resetTestsInputCache();
         renderAll();
         renderTestsPage();
         renderGoalsPage();
@@ -1072,6 +1026,7 @@
     if(typeof data.lastModified !== 'number' || data.lastModified <= 0) data.lastModified = remoteTs || 0;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     markSynced(data.lastModified, remoteVersion);
+    resetTestsInputCache();
     renderAll();
     renderTestsPage();
     renderGoalsPage();
@@ -1596,6 +1551,7 @@
           localStorage.removeItem('lastSyncedVersion');
           lastKnownVersion = 0;
           selectedDateKey = null;
+          resetTestsInputCache();
           renderAll();
           renderTestsPage();
           renderGoalsPage();
@@ -1619,6 +1575,7 @@
         data = loadData();
         selectedDateKey = null;
         saveData(); // local only - never touches the cloud by itself
+        resetTestsInputCache();
         renderAll();
         renderTestsPage();
         renderGoalsPage();
@@ -1845,142 +1802,6 @@
       .sort((a,b)=> a.date.localeCompare(b.date));
   }
 
-  function renderSparkline(values){
-    if(values.length < 2) return '';
-    const w=90, h=26, pad=3;
-    const min = Math.min(...values), max = Math.max(...values);
-    const range = (max-min) || 1;
-    const step = (w-pad*2)/(values.length-1);
-    const pts = values.map((v,i)=>{
-      const x = pad + i*step;
-      const y = h-pad - ((v-min)/range)*(h-pad*2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  }
-
-  // Least-squares slope of a series against its own index (0,1,2,...). Used only to
-  // classify direction (up/flat/down) over the trailing window - not shown as a raw number.
-  function linRegSlope(values){
-    const n = values.length;
-    if(n < 2) return 0;
-    const xMean = (n-1)/2;
-    const yMean = values.reduce((a,b)=>a+b,0)/n;
-    let num=0, den=0;
-    for(let i=0;i<n;i++){ num += (i-xMean)*(values[i]-yMean); den += (i-xMean)*(i-xMean); }
-    return den===0 ? 0 : num/den;
-  }
-  // Needs at least 3 percentile points - a trend read on 1-2 points is just noise.
-  // Looks at up to the trailing 8 attempts so a rough patch from months ago doesn't
-  // keep dragging on a label that should reflect recent form.
-  function trendLabel(withPct){
-    if(withPct.length < 3) return null;
-    const vals = withPct.slice(-8).map(e=>e.percentile);
-    const totalMove = linRegSlope(vals) * (vals.length-1);
-    if(totalMove > 4) return {label:'Improving', cls:'trend-up'};
-    if(totalMove < -4) return {label:'Declining', cls:'trend-down'};
-    return {label:'Flat', cls:'trend-flat'};
-  }
-  function stdev(values){
-    const n = values.length;
-    const mean = values.reduce((a,b)=>a+b,0)/n;
-    return Math.sqrt(values.reduce((s,v)=>s+(v-mean)*(v-mean),0)/n);
-  }
-  // Spread around the TREND LINE, not around the flat average - a rough spread label,
-  // not a formal statistical test. This distinction matters: a clean, steady climb from
-  // 40th to 80th percentile has huge stdev around its own average (it's supposed to -
-  // that's improvement, not noise) but near-zero scatter around the line it's climbing
-  // along. Measuring against the flat mean would wrongly call that "volatile". Measuring
-  // residuals from the fitted trend instead only flags real, unpredictable swings -
-  // attempts that bounce around independent of any underlying direction.
-  function consistencyLabel(withPct){
-    if(withPct.length < 3) return null;
-    const values = withPct.slice(-8).map(e=>e.percentile);
-    const n = values.length;
-    const xMean = (n-1)/2;
-    const yMean = values.reduce((a,b)=>a+b,0)/n;
-    const slope = linRegSlope(values);
-    const intercept = yMean - slope*xMean;
-    const residuals = values.map((v,i)=> v - (intercept + slope*i));
-    const sd = stdev(residuals);
-    if(sd < 5) return 'steady';
-    if(sd < 12) return 'some swings';
-    return 'volatile';
-  }
-  function buildTrendCardHTML(sec, type){
-    const targets = data.settings.targetPercentile || {};
-    const entries = sectionEntries(sec, type);
-    if(!entries.length){
-      return `<div class="trend-card empty"><div class="sec-name">${sec}</div><div class="sec-latest">No attempts yet</div></div>`;
-    }
-    const last = entries[entries.length-1];
-    const withPct = entries.filter(e=>e.percentile!==null && e.percentile!==undefined);
-    const allTimeAvg = withPct.length ? (withPct.reduce((s,e)=>s+e.percentile,0)/withPct.length) : null;
-    const last5 = withPct.slice(-5);
-    const last5Avg = last5.length ? (last5.reduce((s,e)=>s+e.percentile,0)/last5.length) : null;
-    const peakPct = withPct.length ? Math.max(...withPct.map(e=>e.percentile)) : null;
-    const withAcc = entries.filter(e=>e.attempted && e.correct!==null && e.correct!==undefined);
-    const avgAcc = withAcc.length ? (withAcc.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/withAcc.length) : null;
-    const avgAttempted = withAcc.length ? (withAcc.reduce((s,e)=>s+e.attempted,0)/withAcc.length) : null;
-    const trend = trendLabel(withPct);
-    const consistency = consistencyLabel(withPct);
-    // Sparkline is percentile-only, on purpose - raw scores aren't comparable across
-    // different test series (different scales, different negative-marking schemes),
-    // so a line mixing them would show a shape that means nothing.
-    const sparkVals = withPct.slice(-10).map(e=>e.percentile);
-
-    const target = targets[sec];
-    let latestDisplay, hitClass = '';
-    if(last.percentile!==null && last.percentile!==undefined){
-      latestDisplay = last.percentile+'%ile';
-      if(target){ hitClass = last.percentile >= target ? 'pct-hit' : 'pct-miss'; }
-    } else {
-      latestDisplay = last.score;
-    }
-    const targetNote = target ? ` · target ${target}%ile` : '';
-    const trendBadge = trend ? `<span class="trend-badge ${trend.cls}">${trend.label}</span>` : '';
-
-    let avgLine;
-    if(allTimeAvg===null){
-      avgLine = `best score ${Math.max(...entries.map(e=>e.score))}${targetNote} · log percentile to unlock trend stats`;
-    } else if(last5.length < withPct.length){
-      avgLine = `${allTimeAvg.toFixed(2)}%ile all-time · ${last5Avg.toFixed(2)}%ile last ${last5.length}${targetNote}`;
-    } else {
-      avgLine = `avg ${allTimeAvg.toFixed(2)}%ile${targetNote}`;
-    }
-    const peakLine = peakPct!==null ? `peak ${peakPct.toFixed(2)}%ile${consistency ? ' · '+consistency : ''}` : '';
-    const accLine = avgAcc!==null ? `avg accuracy ${avgAcc.toFixed(0)}% on ~${Math.round(avgAttempted)} attempted` : '';
-
-    return `<div class="trend-card">
-      <div class="sec-name">${sec} · ${entries.length} attempt${entries.length>1?'s':''} ${trendBadge}</div>
-      <div class="sec-stats">
-        <div>
-          <div class="sec-latest ${hitClass}">${latestDisplay}</div>
-          <div class="sec-sub">${avgLine}</div>
-          ${peakLine ? `<div class="sec-sub">${peakLine}</div>` : ''}
-          ${accLine ? `<div class="sec-sub">${accLine}</div>` : ''}
-        </div>
-        ${renderSparkline(sparkVals)}
-      </div>
-    </div>`;
-  }
-
-  function renderSectionalTrendCards(){
-    const sectionalCount = data.tests.filter(t=>t.type==='sectional').length;
-    document.getElementById('sectionalCountLine').textContent =
-      `${sectionalCount} sectional${sectionalCount!==1?'s':''} logged`;
-    document.getElementById('sectionalTrendGrid').innerHTML =
-      ['VARC','Quant','LRDI'].map(sec => buildTrendCardHTML(sec, 'sectional')).join('');
-  }
-
-  function renderMockTrendCards(){
-    const mockCount = new Set(data.tests.filter(t=>t.type==='mock').map(t=>t.mockGroup)).size;
-    document.getElementById('mockCountLine').textContent =
-      `${mockCount} full mock${mockCount!==1?'s':''} logged`;
-    document.getElementById('mockTrendGrid').innerHTML =
-      ['VARC','Quant','LRDI','Overall'].map(sec => buildTrendCardHTML(sec, 'mock')).join('');
-  }
-
   function fullDetailHTML(t){
     const hasAcc = t.attempted!==null && t.attempted!==undefined && t.attempted>0 && t.correct!==null && t.correct!==undefined;
     const parts = [];
@@ -2097,62 +1918,6 @@
     });
   }
 
-  // ---------- Percentile allocation (statistical estimate, not an official CAT formula) ----------
-  // Standard normal CDF - Abramowitz & Stegun approximation 26.2.17, accurate to ~7.5e-8.
-  // A well-established formula, not something invented for this app.
-  function normalCDF(z){
-    const b1=0.319381530, b2=-0.356563782, b3=1.781477937, b4=-1.821255978, b5=1.330274429;
-    const p=0.2316419, c=0.39894228;
-    if(z >= 0){
-      const t = 1/(1+p*z);
-      return 1 - c*Math.exp(-z*z/2)*t*(t*(t*(t*(t*b5+b4)+b3)+b2)+b1);
-    } else {
-      return 1 - normalCDF(-z);
-    }
-  }
-  // Inverse standard normal CDF (probit) - Peter Acklam's algorithm, a well-known,
-  // widely used rational approximation, accurate to about 1.15e-9.
-  function inverseNormalCDF(p){
-    if(p <= 0) return -Infinity;
-    if(p >= 1) return Infinity;
-    const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-    const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
-    const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-    const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
-    const p_low = 0.02425, p_high = 1 - p_low;
-    let q, r;
-    if(p < p_low){
-      q = Math.sqrt(-2*Math.log(p));
-      return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
-    } else if(p <= p_high){
-      q = p - 0.5; r = q*q;
-      return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
-    } else {
-      q = Math.sqrt(-2*Math.log(1-p));
-      return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
-    }
-  }
-
-  // Current standing per section. Prefers full-mock percentiles when any exist,
-  // because a mock (three sections back-to-back, real time pressure, fatigue by the
-  // third section) is a much closer proxy for exam day than an isolated sectional
-  // drill done fresh with full attention on one section alone - sectional-only
-  // practice tends to read optimistic next to how the same section performs inside
-  // a full mock. Falls back to blending in sectional attempts only when no mock
-  // percentile is logged yet for that section, so there's still something to work
-  // with early on. The basis (and how many attempts it's built on) is returned so
-  // the UI can say which one it used, rather than presenting a blended number as if
-  // it were mock-grade evidence.
-  function sectionCurrentAvgPercentile(section){
-    const mockEntries = data.tests.filter(t=>t.section===section && t.type==='mock' && t.percentile!==null && t.percentile!==undefined);
-    if(mockEntries.length){
-      return { value: mockEntries.reduce((s,e)=>s+e.percentile,0)/mockEntries.length, basis:'mock', n: mockEntries.length };
-    }
-    const allEntries = data.tests.filter(t=>t.section===section && t.percentile!==null && t.percentile!==undefined);
-    if(!allEntries.length) return null;
-    return { value: allEntries.reduce((s,e)=>s+e.percentile,0)/allEntries.length, basis:'sectional', n: allEntries.length };
-  }
-
   // Score-based helpers. Unlike percentile, score isn't relative to who else sat a
   // given mock, so these are plain averages/maximums over logged data - no fitting,
   // no extrapolation, nothing that can produce a number further from reality the
@@ -2179,168 +1944,41 @@
     return { value: entries.reduce((s,e)=>s+(e.correct/e.attempted*100),0)/entries.length, n: entries.length };
   }
 
-  // Best-ever percentile and accuracy logged for a section, across sectionals and
-  // mocks alike. This is the one number in this whole calculator that isn't a
-  // statistical guess about the future - it's a fact about what you've already
-  // proven you can do at least once. Used as the grounding reference for very high
-  // targets (99.9+), where the population being aimed at is too small for any
-  // fixed score to reliably promise anything (see EXTREME_TARGET_THRESHOLD below).
-  function sectionPeakPercentile(section){
-    const entries = data.tests.filter(t=>t.section===section && t.percentile!==null && t.percentile!==undefined);
-    if(!entries.length) return null;
-    return Math.max(...entries.map(e=>e.percentile));
+  // Chronological score history for a section, mock-preferred (same reasoning as
+  // sectionCurrentAvgScore) - this is the raw series scoreTrend below reads direction
+  // from.
+  function sectionScoreSeries(section){
+    const mockEntries = sectionEntries(section, 'mock');
+    const chosen = mockEntries.length ? mockEntries : sectionEntries(section, null);
+    return chosen.map(e => e.score);
   }
-  function sectionBestAccuracy(section){
-    const entries = data.tests.filter(t=>t.section===section && t.attempted && t.correct!==null && t.correct!==undefined);
-    if(!entries.length) return null;
-    return Math.max(...entries.map(e=> e.correct/e.attempted*100));
+  // Least-squares slope of a series against its own index (0,1,2,...) - used only to
+  // classify direction (up/flat/down) over the trailing window, not shown as a raw number.
+  function linRegSlope(values){
+    const n = values.length;
+    if(n < 2) return 0;
+    const xMean = (n-1)/2;
+    const yMean = values.reduce((a,b)=>a+b,0)/n;
+    let num=0, den=0;
+    for(let i=0;i<n;i++){ num += (i-xMean)*(values[i]-yMean); den += (i-xMean)*(i-xMean); }
+    return den===0 ? 0 : num/den;
   }
-
-  // Above this, the calculator's normal-distribution model is aiming at a population
-  // of only a few dozen people nationally (99.99%ile of ~3 lakh test-takers is
-  // roughly the top 30) - too small and too non-smooth for a bell-curve estimate, or
-  // any fixed score, to reliably promise anything. The math below still runs (it's
-  // the same honest estimate either way), but the UI treats the result as a rough
-  // compass rather than a number to bank on once the target crosses this line.
-  const EXTREME_TARGET_THRESHOLD = 99.9;
-
-  function computeAllocation(overallTargetPct){
-    const sections = ['VARC','Quant','LRDI'];
-    const current = {};
-    for(const sec of sections){
-      current[sec] = sectionCurrentAvgPercentile(sec);
-    }
-    const missing = sections.filter(sec => current[sec]===null);
-    if(missing.length){
-      return { error: `Log at least one percentile-tracked attempt for ${missing.join(' and ')} first — there's nothing to base a personalized split on yet.` };
-    }
-    const extremeTarget = overallTargetPct >= EXTREME_TARGET_THRESHOLD;
-
-    const zTarget = inverseNormalCDF(Math.min(0.9999, Math.max(0.001, overallTargetPct/100)));
-    const zCurrent = {};
-    for(const sec of sections) zCurrent[sec] = inverseNormalCDF(Math.min(0.9999, Math.max(0.001, current[sec].value/100)));
-
-    // Same absolute z-score boost applied to every section, derived from how far your
-    // current 3-section average sits from the target. This preserves each section's
-    // relative strength (a strong section is still asked to push further; a weak one
-    // gets a real but achievable stretch) rather than earlier flawed logic that gave
-    // every below-target section an identical target regardless of how far behind it was.
-    const avgZCurrent = sections.reduce((s,sec)=>s+zCurrent[sec],0) / sections.length;
-    const deltaZ = zTarget - avgZCurrent;
-
-    const result = {};
-    if(deltaZ <= 0){
-      // Already tracking to clear this goal on average - show current standing as-is,
-      // no artificial reduction implied.
-      for(const sec of sections) result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target: current[sec].value, onTrack: true, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec) };
-      return { sections: result, alreadyOnTrack: true, extremeTarget };
-    }
-    for(const sec of sections){
-      const targetZ = zCurrent[sec] + deltaZ;
-      const pct = normalCDF(targetZ) * 100;
-      const target = Math.max(1, Math.min(99.99, pct));
-      result[sec] = { current: current[sec].value, basis: current[sec].basis, n: current[sec].n, target, gap: target - current[sec].value, peak: sectionPeakPercentile(sec), bestAcc: sectionBestAccuracy(sec) };
-    }
-    return { sections: result, extremeTarget };
+  // Needs at least 3 scores - a direction read on 1-2 points is just noise. Looks at
+  // the trailing 5 mocks (recent form, not the whole history) and uses a threshold
+  // relative to the section's own average rather than a fixed mark count, since
+  // Overall (up to ~198) and a single section (much smaller range) don't sit on the
+  // same scale - a flat 4-mark move means something different for each.
+  function scoreTrend(scores){
+    if(scores.length < 3) return null;
+    const vals = scores.slice(-5);
+    const avgVal = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const totalMove = linRegSlope(vals) * (vals.length-1);
+    const threshold = Math.max(2, Math.abs(avgVal) * 0.1);
+    if(totalMove > threshold) return {label:'Improving', cls:'trend-up'};
+    if(totalMove < -threshold) return {label:'Declining', cls:'trend-down'};
+    return {label:'Flat', cls:'trend-flat'};
   }
 
-  function renderAllocationResult(){
-    const input = document.getElementById('overallTargetInput');
-    const box = document.getElementById('percentileAllocationResult');
-    const val = parseFloat(input.value);
-    if(!input.value || isNaN(val)){ box.innerHTML = ''; return; }
-    if(val < 1 || val > 99.99){
-      box.innerHTML = '<div class="empty-note">Enter something between 1 and 99.99.</div>';
-      return;
-    }
-    const result = computeAllocation(val);
-    if(result.error){
-      box.innerHTML = `<div class="empty-note">${result.error}</div>`;
-      return;
-    }
-    if(!data.settings.targetPercentile) data.settings.targetPercentile = {};
-    data.settings.targetPercentile.Overall = val;
-    let html = '<div class="alloc-result">';
-    if(result.extremeTarget){
-      html += `<div class="empty-note" style="margin-bottom:10px;">At ${val}%ile you're aiming at roughly the top 30 test-takers nationally — a group too small for any fixed score, mock percentile, or bell-curve estimate to reliably promise. The split below uses the same honest math as any other target, so treat it as a rough compass, not a number to bank on. The one thing you fully control is closing the gap to your own best-ever section performance — that's shown alongside each target below.</div>`;
-    }
-    if(result.alreadyOnTrack){
-      html += '<div class="empty-note" style="margin-bottom:8px;">Your current averages already clear this target — here\'s where each section stands.</div>';
-    }
-    ['VARC','Quant','LRDI'].forEach(sec=>{
-      const r = result.sections[sec];
-      data.settings.targetPercentile[sec] = Math.round(r.target*100)/100;
-      const basisNote = r.basis==='mock'
-        ? `${r.n} mock${r.n>1?'s':''}`
-        : `${r.n} sectional${r.n>1?'s':''}, no mocks yet`;
-      let detail = result.alreadyOnTrack
-        ? `currently averaging ${r.current.toFixed(2)}%ile (${basisNote})`
-        : `${r.current.toFixed(2)}%ile now (${basisNote}) · +${r.gap.toFixed(2)} needed`;
-      if(result.extremeTarget){
-        const bestBits = [];
-        if(r.peak!==null) bestBits.push(`best ever ${r.peak.toFixed(2)}%ile`);
-        if(r.bestAcc!==null) bestBits.push(`best accuracy ${r.bestAcc.toFixed(0)}%`);
-        if(bestBits.length) detail += ` · ${bestBits.join(' · ')}`;
-      }
-      html += `<div class="alloc-row">
-        <div><div class="alloc-sec">${sec}</div><div class="alloc-detail">${detail}</div></div>
-        <div class="alloc-target">${r.target.toFixed(2)}%ile</div>
-      </div>`;
-    });
-    html += '</div>';
-    box.innerHTML = html;
-    saveData();
-    renderSectionalTrendCards();
-    renderMockTrendCards();
-  }
-  function renderScoreGapResult(){
-    const input = document.getElementById('targetScoreInput');
-    const box = document.getElementById('scoreGapResult');
-    const val = parseFloat(input.value);
-    if(!input.value || isNaN(val)){
-      box.innerHTML = '';
-      if(data.settings.targetScore !== null){
-        data.settings.targetScore = null;
-        saveData();
-      }
-      return;
-    }
-    data.settings.targetScore = val;
-
-    let html = '<div class="alloc-result">';
-    const overall = sectionCurrentAvgScore('Overall');
-    const overallBest = sectionBestScore('Overall');
-    if(overall){
-      const gap = val - overall.value;
-      const basisNote = overall.basis==='mock' ? `${overall.n} mock${overall.n>1?'s':''}` : `${overall.n} sectional${overall.n>1?'s':''}`;
-      let detail = `avg ${overall.value.toFixed(1)} (${basisNote})`;
-      if(overallBest!==null) detail += ` · best ${overallBest}`;
-      detail += gap > 0 ? ` · +${gap.toFixed(1)} needed` : ` · already averaging your target`;
-      html += `<div class="alloc-row">
-        <div><div class="alloc-sec">Overall</div><div class="alloc-detail">${detail}</div></div>
-        <div class="alloc-target">${val}</div>
-      </div>`;
-    } else {
-      html += `<div class="empty-note" style="margin-bottom:8px;">Log a full mock with an Overall score filled in to see your gap to this target.</div>`;
-    }
-
-    ['VARC','Quant','LRDI'].forEach(sec=>{
-      const cur = sectionCurrentAvgScore(sec);
-      if(!cur) return;
-      const best = sectionBestScore(sec);
-      const acc = sectionAvgAccuracy(sec);
-      const basisNote = cur.basis==='mock' ? `${cur.n} mock${cur.n>1?'s':''}` : `${cur.n} sectional${cur.n>1?'s':''}`;
-      let detail = `avg score ${cur.value.toFixed(1)} (${basisNote})`;
-      if(acc) detail += ` · avg accuracy ${acc.value.toFixed(0)}%`;
-      if(best!==null) detail += ` · best ${best}`;
-      html += `<div class="alloc-row">
-        <div><div class="alloc-sec">${sec}</div><div class="alloc-detail">${detail}</div></div>
-      </div>`;
-    });
-    html += '</div>';
-    box.innerHTML = html;
-    saveData();
-  }
   function latestTest(section, type){
     const entries = sectionEntries(section, type);
     return entries.length ? entries[entries.length-1] : null;
@@ -2360,11 +1998,35 @@
     const floors = Object.fromEntries(sections.map(sec=>[sec,Math.max(0,parseFloat(document.getElementById('sectionFloor'+sec).value)||0)]));
     const floorTotal = sections.reduce((sum,sec)=>sum+floors[sec],0);
     if(floorTotal>target) return {error:`Your sectional floors total ${floorTotal}, which is above the overall target of ${target}.`};
+
+    // Check your REAL current standing against the target first. This has to use
+    // the actual baseline (sum of real section averages), not a version where a
+    // section sitting below its floor is quietly treated as if it were already at
+    // that floor - doing that could report "already on track" while the baseline
+    // shown right next to it is still below target, which is exactly the kind of
+    // self-contradicting number this redesign exists to get rid of.
+    if(baseline>=target){
+      return {sections,current,baseline,floors,alreadyOnTrack:true,targetFor(sec){ return current[sec].value; }};
+    }
+
+    // Not there yet for real. Floors are a hard minimum per section in the plan
+    // (never plan a section below its floor); whatever's left above that
+    // floor-respecting minimum is distributed toward your historically stronger
+    // sections.
     const base = Object.fromEntries(sections.map(sec=>[sec,Math.max(floors[sec],current[sec].value)]));
     const baseTotal = sections.reduce((sum,sec)=>sum+base[sec],0);
-    if(baseTotal>=target) return {sections,current,baseline,floors,base,alreadyOnTrack:true,targetFor(sec){ return base[sec]; }};
+    if(baseTotal>=target){
+      // Clearing the floors in your weaker sections would close the gap without
+      // asking anything more of your stronger ones - but you are not already
+      // there, so this is kept distinct from alreadyOnTrack above.
+      return {sections,current,baseline,floors,base,floorsSuffice:true,targetFor(sec){ return base[sec]; }};
+    }
     const remaining = target-baseTotal;
-    const strengths = Object.fromEntries(sections.map(sec=>[sec,Math.max(1,sectionBestScore(sec)||0,current[sec].value)]));
+    // Weighted by current average, not best-ever score. Best-ever can be a single
+    // lucky day - using it here would pull more of the remaining marks toward a
+    // section that spiked once rather than one that's reliably strong, which is
+    // the opposite of what "weighted toward your stronger sections" should mean.
+    const strengths = Object.fromEntries(sections.map(sec=>[sec,Math.max(1,current[sec].value)]));
     const strengthTotal = sections.reduce((sum,sec)=>sum+strengths[sec],0);
     return {sections,current,baseline,floors,base,remaining,targetFor(sec){ return base[sec]+remaining*strengths[sec]/strengthTotal; }};
   }
@@ -2382,8 +2044,18 @@
       return;
     }
     const gap=target-overall.value, progress=Math.max(0,Math.min(100,overall.value/target*100));
-    box.innerHTML = `<div class="score-runway"><div class="runway-main"><div class="runway-label">Current mock average</div><div class="runway-value">${overall.value.toFixed(1)} <small>/ ${target}</small></div><div class="score-progress"><span style="width:${progress}%"></span></div></div><div class="runway-stat"><div class="runway-label">Gap to target</div><div class="runway-value">${gap>0?'+'+gap.toFixed(1):'On track'}</div></div><div class="runway-stat"><div class="runway-label">Best mock</div><div class="runway-value">${best===null?'—':best}</div></div><div class="runway-stat"><div class="runway-label">Latest mock</div><div class="runway-value">${latest?latest.score:'—'}</div></div></div>`;
+    const trend=scoreTrend(sectionScoreSeries('Overall'));
+    const trendBadge=trend?` <span class="trend-badge ${trend.cls}">${trend.label}</span>`:'';
+    box.innerHTML = `<div class="score-runway"><div class="runway-main"><div class="runway-label">Current mock average${trendBadge}</div><div class="runway-value">${overall.value.toFixed(1)} <small>/ ${target}</small></div><div class="score-progress"><span style="width:${progress}%"></span></div></div><div class="runway-stat"><div class="runway-label">Gap to target</div><div class="runway-value">${gap>0?'+'+gap.toFixed(1):'On track'}</div></div><div class="runway-stat"><div class="runway-label">Best mock</div><div class="runway-value">${best===null?'—':best}</div></div><div class="runway-stat"><div class="runway-label">Latest mock</div><div class="runway-value">${latest?latest.score:'—'}</div></div></div>`;
   }
+  // These accuracy bands are reasonable starting defaults, not derived from your
+  // data or from CAT's marking scheme - same category as the sectional score
+  // floors defaulting to 30. Tune them here if 75/65/90 don't match how you
+  // actually think about a "good" or "low" accuracy day.
+  const ACCURACY_GOOD_THRESHOLD = 75;
+  const ACCURACY_LOW_THRESHOLD = 65;
+  const ACCURACY_TARGET_CAP = 90;
+
   function renderTestCommandCenter(){
     renderScoreGapResult();
     const target=parseFloat(document.getElementById('targetScoreInput').value), plan=sectionScorePlan(target);
@@ -2396,23 +2068,27 @@
       let priority=null;
       planBox.innerHTML=plan.sections.map(sec=>{
         const cur=plan.current[sec], floor=plan.floors[sec], planned=plan.targetFor(sec), uplift=planned-cur.value, floorGap=Math.max(0,floor-cur.value), accuracy=sectionAvgAccuracy(sec), acc=accuracy?accuracy.value:null;
-        const urgency=floorGap*5+uplift+(acc===null?10:Math.max(0,75-acc));
+        const urgency=floorGap*5+uplift+(acc===null?10:Math.max(0,ACCURACY_GOOD_THRESHOLD-acc));
         if(!priority || urgency>priority.urgency) priority={sec,uplift,floorGap,floor,acc,basis:cur.basis,urgency};
-        const cls=acc===null?'':acc>=75?'good':acc<65?'low':'';
-        return `<div class="score-plan-row"><div class="score-plan-sec">${sec}</div><div class="score-plan-detail">${cur.basis==='mock'?'Mock':'Sectional'} avg ${cur.value.toFixed(1)} · floor ${floor}${floorGap?` · +${floorGap.toFixed(1)} to floor`:' · floor met'}</div><div class="score-plan-score">${planned.toFixed(0)}<span>target score</span></div><div class="score-plan-acc ${cls}">${acc===null?'—':acc.toFixed(0)+'%'}<span>accuracy</span></div></div>`;
+        const cls=acc===null?'':acc>=ACCURACY_GOOD_THRESHOLD?'good':acc<ACCURACY_LOW_THRESHOLD?'low':'';
+        const trend=scoreTrend(sectionScoreSeries(sec));
+        const trendBadge=trend?` <span class="trend-badge ${trend.cls}">${trend.label}</span>`:'';
+        return `<div class="score-plan-row"><div class="score-plan-sec">${sec}</div><div class="score-plan-detail">${cur.basis==='mock'?'Mock':'Sectional'} avg ${cur.value.toFixed(1)} · floor ${floor}${floorGap?` · +${floorGap.toFixed(1)} to floor`:' · floor met'}${trendBadge}</div><div class="score-plan-score">${planned.toFixed(0)}<span>target score</span></div><div class="score-plan-acc ${cls}">${acc===null?'—':acc.toFixed(0)+'%'}<span>accuracy</span></div></div>`;
       }).join('');
-      insight.innerHTML=plan.alreadyOnTrack
-        ? `<b>Sectional floors are covered.</b> Your current section baseline is ${plan.baseline.toFixed(1)}; the next job is to make it repeatable in full mocks.`
-        : `<b>Guardrail first:</b> no section is planned below its score floor. After the three floors are covered, the remaining marks are weighted toward your historically stronger sections.`;
+      insight.innerHTML = plan.alreadyOnTrack
+        ? `<b>You're already there.</b> Your real section average is ${plan.baseline.toFixed(1)}, at or above your ${target} target — the job now is making it repeat in full mocks, not chasing more marks.`
+        : plan.floorsSuffice
+          ? `<b>Floors would cover it.</b> Your real average is ${plan.baseline.toFixed(1)}, still below target — but clearing your sectional floors would close the gap without asking anything more of your stronger sections.`
+          : `<b>Guardrail first:</b> no section is planned below its score floor. After the three floors are covered, the remaining marks are weighted toward your historically stronger sections.`;
       const attempts=averageAttempts(priority.sec,priority.basis);
       const tagged=sectionEntries(priority.sec,priority.basis==='mock'?'mock':null).filter(t=>t.errorTag);
       const counts=tagged.reduce((all,t)=>{all[t.errorTag]=(all[t.errorTag]||0)+1; return all;},{});
       const common=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
       if(priority.floorGap>0){
         action.innerHTML=`<div class="test-kicker">Next action</div><strong>${priority.sec}: clear the ${priority.floor} score floor first.</strong><p>Your current average is ${plan.current[priority.sec].value.toFixed(1)}, so the immediate gap is +${priority.floorGap.toFixed(1)}.${common?` Start by reviewing ${common} errors.`:''}</p>`;
-      }else if(priority.acc!==null && priority.acc<75){
+      }else if(priority.acc!==null && priority.acc<ACCURACY_LOW_THRESHOLD){
         const marks=attempts?(attempts*.2).toFixed(1):null;
-        action.innerHTML=`<div class="test-kicker">Next action</div><strong>${priority.sec}: improve selection before adding attempts.</strong><p>Run one timed sectional and target accuracy above ${Math.min(90,Math.ceil(priority.acc/5)*5+5)}%.${marks?` At your usual ${Math.round(attempts)} attempts, a 5-point accuracy gain is roughly ${marks} more marks.`:''}${common?` Most repeated logged issue: ${common}.`:''}</p>`;
+        action.innerHTML=`<div class="test-kicker">Next action</div><strong>${priority.sec}: improve selection before adding attempts.</strong><p>Run one timed sectional and target accuracy above ${Math.min(ACCURACY_TARGET_CAP,Math.ceil(priority.acc/5)*5+5)}%.${marks?` At your usual ${Math.round(attempts)} attempts, a 5-point accuracy gain is roughly ${marks} more marks.`:''}${common?` Most repeated logged issue: ${common}.`:''}</p>`;
       }else{
         action.innerHTML=`<div class="test-kicker">Next action</div><strong>${priority.sec}: add score without sacrificing accuracy.</strong><p>Your next planned gain is +${priority.uplift.toFixed(1)} marks.${common?` Review ${common} errors first.`:' Log attempted, correct and wrong after the sectional so this becomes more specific.'}</p>`;
       }
@@ -2434,7 +2110,21 @@
       renderTestCommandCenter();
     });
   });
-  document.getElementById('overallTargetInput').addEventListener('input', renderAllocationResult);
+
+  // The 'loaded' flag below exists so typing in these fields doesn't get stomped
+  // by every re-render - but that same guard means a wholesale data replacement
+  // (import, reset, restore-backup, or a cloud sync pull) would otherwise leave
+  // these inputs frozen on whatever they showed before, silently out of sync with
+  // the data underneath them. Call this right before renderTestsPage() at each of
+  // those replacement points so the fields are forced to re-read fresh.
+  function resetTestsInputCache(){
+    const targetInput = document.getElementById('targetScoreInput');
+    if(targetInput) delete targetInput.dataset.loaded;
+    ['VARC','LRDI','Quant'].forEach(sec=>{
+      const floorInput = document.getElementById('sectionFloor'+sec);
+      if(floorInput) delete floorInput.dataset.loaded;
+    });
+  }
 
   function renderTestsPage(){
     if(!document.getElementById('testDate').value){
