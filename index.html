@@ -240,6 +240,23 @@
   .goal-edit-input{flex:1; background:var(--surface); border:1px solid var(--accent); color:var(--text); padding:7px 9px; border-radius:6px; font-size:13px; font-family:'Inter',sans-serif;}
   .archived-list{margin-top:14px; opacity:0.75;}
 
+  /* ---------- Errors tab ---------- */
+  .err-card{background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:8px;}
+  .err-card.resolved{opacity:.6;}
+  .err-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .err-date{color:var(--text-faint); font-size:12px;}
+  .err-topic{color:var(--text-dim); font-size:12px;}
+  .err-tag{font-size:10px; padding:2px 7px; border-radius:10px; font-weight:700; text-transform:uppercase; background:rgba(139,136,144,0.18); color:var(--text-dim);}
+  .err-tag.Concept{background:var(--accent-dim); color:var(--accent);}
+  .err-tag.Silly{background:var(--warn-dim); color:var(--warn);}
+  .err-tag.Selection{background:var(--success-dim); color:var(--success);}
+  .err-line{font-size:12.5px; color:var(--text-dim); line-height:1.5; margin-top:6px;}
+  .err-line b{color:var(--text);}
+  .err-actions{display:flex; justify-content:space-between; align-items:center; margin-top:8px;}
+  .err-actions label{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); cursor:pointer;}
+  .err-actions input{width:18px; height:18px; accent-color:var(--success);}
+  .filter-label{font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin:0 0 5px;}
+
   /* ---------- Hero ---------- */
   .hero{padding:28px 0 20px; text-align:center;}
   .hero-top{display:flex; justify-content:space-between; align-items:flex-start; text-align:left; margin-bottom:22px;}
@@ -340,7 +357,7 @@
   <nav class="tabbar">
     <button class="tab-btn active" id="tabStudyBtn" data-page="study">Study</button>
     <button class="tab-btn" id="tabTestsBtn" data-page="tests">Tests</button>
-    <button class="tab-btn" id="tabGoalsBtn" data-page="goals">Goals</button>
+    <button class="tab-btn" id="tabErrorsBtn" data-page="errors">Errors</button>
     <button class="tab-btn" id="tabPracticeBtn" data-page="practice">Practice</button>
   </nav>
 
@@ -583,48 +600,88 @@
 
   </div><!-- /page-tests -->
 
-  <div id="page-goals" class="page hidden">
+  <div id="page-errors" class="page hidden">
 
   <section>
-    <h2>Today's targets</h2>
-    <div class="goal-progress" id="goalProgressLine"></div>
-    <div id="todayGoalList"></div>
-    <button class="btn" id="backdateGoalToggle" style="margin-top:10px;">+ Log for a different date</button>
-    <div id="backdateGoalForm" class="hidden" style="margin-top:10px;">
-      <div class="field">
-        <label for="backdateGoalDate">Date</label>
-        <input type="date" id="backdateGoalDate">
+    <h2>Log an error</h2>
+    <div class="goal-progress" id="errDateLine"></div>
+    <button class="btn" id="errBackdateToggle">+ Log for a different date</button>
+    <div id="errBackdateForm" class="hidden" style="margin-top:10px;">
+      <div class="field"><label for="errBackdateDate">Date</label><input type="date" id="errBackdateDate"></div>
+    </div>
+    <div class="field" style="margin-top:14px;">
+      <label>Subject</label>
+      <div class="filter-chips" id="errSubjectChips">
+        <button type="button" class="chip active" data-v="VARC">VARC</button>
+        <button type="button" class="chip" data-v="Quant">Quant</button>
+        <button type="button" class="chip" data-v="LRDI">LRDI</button>
       </div>
-      <div id="backdateGoalList"></div>
     </div>
+    <div class="field">
+      <label>Topic</label>
+      <select id="errTopicSelect" class="select-input"></select>
+      <div class="empty-note hidden" id="errNoTopics">No topics for this subject yet - add them in the Practice tab.</div>
+    </div>
+    <div class="field">
+      <label>Sub-topic (optional)</label>
+      <select id="errSubtopicSelect" class="select-input"></select>
+    </div>
+    <div class="field">
+      <label for="errSourceInput">Source (optional)</label>
+      <input type="text" id="errSourceInput" placeholder="e.g. CAT 2025 Slot 1, RC4">
+    </div>
+    <div class="field">
+      <label>Tag</label>
+      <div class="filter-chips" id="errTagChips">
+        <button type="button" class="chip" data-v="Concept">Concept</button>
+        <button type="button" class="chip" data-v="Silly">Silly</button>
+        <button type="button" class="chip" data-v="Time">Time</button>
+        <button type="button" class="chip" data-v="Selection">Selection</button>
+      </div>
+    </div>
+    <div class="field"><label for="errWhyInput">Why</label><input type="text" id="errWhyInput" placeholder="What actually went wrong"></div>
+    <div class="field"><label for="errFixInput">Fix</label><input type="text" id="errFixInput" placeholder="What you'll do differently"></div>
+    <button class="btn primary" id="errAddBtn">Add error</button>
   </section>
 
   <section>
-    <h2>History</h2>
-    <div class="cal-header">
-      <button id="goalPrevMonth" aria-label="Previous month">‹</button>
-      <div class="month-label" id="goalMonthLabel">—</div>
-      <button id="goalNextMonth" aria-label="Next month">›</button>
+    <h2>Tag summary</h2>
+    <div class="filter-chips" id="errSummaryRange">
+      <button type="button" class="chip active" data-v="7">Last 7 days</button>
+      <button type="button" class="chip" data-v="all">All time</button>
     </div>
-    <div class="cal-grid" id="goalCalDow"></div>
-    <div class="cal-grid" id="goalCalGrid"></div>
-    <div class="day-detail hidden" id="goalDayDetail"></div>
+    <div class="table-wrap" id="errSummaryTable"></div>
+    <div class="empty-note" id="errUnresolvedLine"></div>
   </section>
 
   <section>
-    <h2>Edit goals</h2>
-    <div class="field-row">
-      <input type="text" id="newGoalInput" placeholder="Add a new daily target" style="flex:3;">
-      <button class="btn primary" id="addGoalBtn" style="flex:1;">Add</button>
+    <h2>Errors</h2>
+    <div class="filter-label">Subject</div>
+    <div class="filter-chips" id="errFilterSubject">
+      <button type="button" class="chip active" data-v="All">All</button>
+      <button type="button" class="chip" data-v="VARC">VARC</button>
+      <button type="button" class="chip" data-v="Quant">Quant</button>
+      <button type="button" class="chip" data-v="LRDI">LRDI</button>
     </div>
-    <div id="activeGoalsList" style="margin-top:14px;"></div>
-    <div id="archivedGoalsWrap" class="archived-list hidden">
-      <div class="empty-note" style="margin-bottom:8px;">Archived (history is kept, just hidden from today's list)</div>
-      <div id="archivedGoalsList"></div>
+    <div class="filter-label">Tag</div>
+    <div class="filter-chips" id="errFilterTag">
+      <button type="button" class="chip active" data-v="All">All</button>
+      <button type="button" class="chip" data-v="Concept">Concept</button>
+      <button type="button" class="chip" data-v="Silly">Silly</button>
+      <button type="button" class="chip" data-v="Time">Time</button>
+      <button type="button" class="chip" data-v="Selection">Selection</button>
     </div>
+    <div class="filter-label">Status (Unresolved = this week's re-attempt list)</div>
+    <div class="filter-chips" id="errFilterStatus">
+      <button type="button" class="chip active" data-v="All">All</button>
+      <button type="button" class="chip" data-v="Unresolved">Unresolved</button>
+      <button type="button" class="chip" data-v="Resolved">Resolved</button>
+    </div>
+    <div class="goal-progress" id="errCountLine"></div>
+    <div id="errList"></div>
   </section>
 
-  </div><!-- /page-goals -->
+  </div><!-- /page-errors -->
 
   <div id="page-practice" class="page hidden">
 
@@ -707,13 +764,7 @@
 <script>
 (function(){
   const STORAGE_KEY = 'grindLogData';
-  const DEFAULT_GOALS = [
-    { id:'goal_1', text:'20 quality Quant questions', archived:false },
-    { id:'goal_2', text:'3–4 quality LRDI sets', archived:false },
-    { id:'goal_3', text:'3 RCs + 5–6 VA questions (VARC)', archived:false },
-    { id:'goal_4', text:'45 mins of reading', archived:false },
-    { id:'goal_5', text:"Plan tomorrow's targets before bed", archived:false }
-  ];
+  const ERROR_TAGS = ['Concept','Silly','Time','Selection'];
   const DOW = ['S','M','T','W','T','F','S'];
 
   function normalizeData(raw){
@@ -782,21 +833,6 @@
       : [];
     raw.activeSession = (raw.activeSession && raw.activeSession.start) ? raw.activeSession : null;
 
-    // Daily targets checklist — seeded once with your given goals if this data has never had any.
-    // Existing goals (if present) are kept exactly as-is, just sanitized.
-    raw.goals = Array.isArray(raw.goals) && raw.goals.length
-      ? raw.goals
-          .filter(g => g && typeof g==='object' && typeof g.text==='string' && g.text.trim())
-          .map(g => ({ id: g.id || ('goal_'+Math.random().toString(36).slice(2,9)), text: g.text, archived: !!g.archived }))
-      : DEFAULT_GOALS.map(g => ({...g}));
-
-    raw.goalLogs = (raw.goalLogs && typeof raw.goalLogs==='object') ? raw.goalLogs : {};
-    Object.keys(raw.goalLogs).forEach(day=>{
-      const dayLog = raw.goalLogs[day];
-      if(!dayLog || typeof dayLog !== 'object'){ raw.goalLogs[day] = {}; return; }
-      Object.keys(dayLog).forEach(gid=>{ dayLog[gid] = !!dayLog[gid]; });
-    });
-
     // Practice log: subject > topic > sub-topic, with a running question count per
     // entry. Topics/sub-topics are user-defined (no preset syllabus) - each is just
     // a name + stable id, and logs reference the id (not the name) so a later rename
@@ -828,6 +864,27 @@
             subtopicId: l.subtopicId || null,
             source: typeof l.source === 'string' ? l.source.trim() : '',
             count: Math.round(parseFloat(l.count))
+          }))
+      : [];
+
+    // Errors log: one row per mistake. Topic/sub-topic reference the Practice tab's
+    // topicId/subtopicId (no parallel taxonomy). the old goals data from the
+    // old Goals tab is deliberately left untouched in the blob so older checkpoints
+    // and other devices still merge cleanly - the UI just no longer reads them.
+    raw.errors = Array.isArray(raw.errors)
+      ? raw.errors
+          .filter(e => e && typeof e==='object' && ['VARC','Quant','LRDI'].includes(e.subject) && e.topicId && ERROR_TAGS.includes(e.tag))
+          .map(e => ({
+            id: e.id || ('err_'+Math.random().toString(36).slice(2,9)),
+            date: e.date || '1970-01-01',
+            subject: e.subject,
+            topicId: e.topicId,
+            subtopicId: e.subtopicId || null,
+            source: typeof e.source === 'string' ? e.source.trim() : '',
+            tag: e.tag,
+            why: typeof e.why === 'string' ? e.why.trim() : '',
+            fix: typeof e.fix === 'string' ? e.fix.trim() : '',
+            resolved: !!e.resolved
           }))
       : [];
 
@@ -863,12 +920,12 @@
     if(!d) return 0;
     const testCount = Array.isArray(d.tests) ? d.tests.length : 0;
     const dayCount = d.days && typeof d.days==='object' ? Object.keys(d.days).length : 0;
-    const goalLogDays = d.goalLogs && typeof d.goalLogs==='object' ? Object.keys(d.goalLogs).length : 0;
+    const errorCount = Array.isArray(d.errors) ? d.errors.length : 0;
     const practiceLogCount = d.practice && Array.isArray(d.practice.logs) ? d.practice.logs.length : 0;
     const practiceTopicCount = d.practice && d.practice.topics && typeof d.practice.topics==='object'
       ? Object.values(d.practice.topics).reduce((s,arr)=> s + (Array.isArray(arr)?arr.length:0), 0)
       : 0;
-    return testCount + dayCount + goalLogDays + practiceLogCount + practiceTopicCount;
+    return testCount + dayCount + errorCount + practiceLogCount + practiceTopicCount;
   }
 
   function snapshotBackup(mode){
@@ -930,7 +987,7 @@
         resetTestsInputCache();
         renderAll();
         renderTestsPage();
-        renderGoalsPage();
+        renderErrorsPage();
         renderPracticePage();
         alert('Restored.');
       });
@@ -1029,7 +1086,7 @@
     resetTestsInputCache();
     renderAll();
     renderTestsPage();
-    renderGoalsPage();
+    renderErrorsPage();
     renderPracticePage();
   }
 
@@ -1554,7 +1611,7 @@
           resetTestsInputCache();
           renderAll();
           renderTestsPage();
-          renderGoalsPage();
+          renderErrorsPage();
           renderPracticePage();
         }
       }catch(err){ alert('Could not read that file. Make sure it is a Grind Log backup JSON.'); }
@@ -1578,7 +1635,7 @@
         resetTestsInputCache();
         renderAll();
         renderTestsPage();
-        renderGoalsPage();
+        renderErrorsPage();
         renderPracticePage();
         setSyncStatus(localStorage.getItem('syncId') ? 'Reset locally. Tap "Sync now" if you want to reconcile this with the cloud copy — you\'ll be asked to choose.' : 'No Sync ID saved on this device yet.');
       }
@@ -1588,28 +1645,28 @@
   // ---------- Tab switching ----------
   const tabStudyBtn = document.getElementById('tabStudyBtn');
   const tabTestsBtn = document.getElementById('tabTestsBtn');
-  const tabGoalsBtn = document.getElementById('tabGoalsBtn');
+  const tabErrorsBtn = document.getElementById('tabErrorsBtn');
   const tabPracticeBtn = document.getElementById('tabPracticeBtn');
   const pageStudy = document.getElementById('page-study');
   const pageTests = document.getElementById('page-tests');
-  const pageGoals = document.getElementById('page-goals');
+  const pageErrors = document.getElementById('page-errors');
   const pagePractice = document.getElementById('page-practice');
   function switchTab(name){
     pageStudy.classList.toggle('hidden', name!=='study');
     pageTests.classList.toggle('hidden', name!=='tests');
-    pageGoals.classList.toggle('hidden', name!=='goals');
+    pageErrors.classList.toggle('hidden', name!=='errors');
     pagePractice.classList.toggle('hidden', name!=='practice');
     tabStudyBtn.classList.toggle('active', name==='study');
     tabTestsBtn.classList.toggle('active', name==='tests');
-    tabGoalsBtn.classList.toggle('active', name==='goals');
+    tabErrorsBtn.classList.toggle('active', name==='errors');
     tabPracticeBtn.classList.toggle('active', name==='practice');
     if(name==='tests') renderTestsPage();
-    if(name==='goals') renderGoalsPage();
+    if(name==='errors') renderErrorsPage();
     if(name==='practice') renderPracticePage();
   }
   tabStudyBtn.addEventListener('click', ()=>switchTab('study'));
   tabTestsBtn.addEventListener('click', ()=>switchTab('tests'));
-  tabGoalsBtn.addEventListener('click', ()=>switchTab('goals'));
+  tabErrorsBtn.addEventListener('click', ()=>switchTab('errors'));
   tabPracticeBtn.addEventListener('click', ()=>switchTab('practice'));
 
   // The Tests tab has one decision-first view and two supporting views. This keeps
@@ -2147,266 +2204,167 @@
     renderSectionalHistory();
   }
 
-  // ---------- Goals (daily targets checklist) ----------
-  let goalCalViewYear, goalCalViewMonth;
-  let goalSelectedDateKey = null;
+  // ---------- Errors log ----------
+  const SUBJECTS = ['VARC','Quant','LRDI'];
+  let errSubject = 'VARC', errTopicId = null, errSubtopicId = null, errTag = null;
+  let errF = { subject:'All', tag:'All', status:'All' };
+  let errRange = '7';
 
-  function activeGoals(){ return data.goals.filter(g=>!g.archived); }
-  function goalById(id){ return data.goals.find(g=>g.id===id); }
-
-  function toggleGoal(goalId, checked, dateKeyStr){
-    const key = dateKeyStr || todayKey();
-    if(!data.goalLogs[key]) data.goalLogs[key] = {};
-    data.goalLogs[key][goalId] = checked;
-    saveData();
-    renderTodayGoals();
-    renderGoalCalendar();
-    renderBackdateGoalList();
+  function esc(s){
+    return String(s==null ? '' : s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+  function makeErrorId(){ return 'err_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
-  function renderTodayGoals(){
-    const list = document.getElementById('todayGoalList');
-    const goals = activeGoals();
-    const key = todayKey();
-    if(!data.goalLogs[key]) data.goalLogs[key] = {};
-    let backfilled = false;
-    goals.forEach(g=>{
-      if(!(g.id in data.goalLogs[key])){ data.goalLogs[key][g.id] = false; backfilled = true; }
-    });
-    if(backfilled){
-      // Persist locally, but deliberately don't call saveData()/bump lastModified here -
-      // filling in explicit "not done yet" defaults isn't a real change the person made,
-      // and shouldn't make this device look "dirty" the next time it syncs.
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-    const todayLog = data.goalLogs[key];
-
-    if(!goals.length){
-      list.innerHTML = '<div class="empty-note">No active targets — add one below.</div>';
-      document.getElementById('goalProgressLine').textContent = '';
-      return;
-    }
-    const doneCount = goals.filter(g=>todayLog[g.id]).length;
-    document.getElementById('goalProgressLine').textContent = `${doneCount} of ${goals.length} done today`;
-    list.innerHTML = goals.map(g=>{
-      const checked = !!todayLog[g.id];
-      return `<label class="goal-item ${checked?'done':''}">
-        <input type="checkbox" data-goal-id="${g.id}" ${checked?'checked':''}>
-        <span class="goal-text">${g.text}</span>
-      </label>`;
-    }).join('');
-    list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
-      cb.addEventListener('change', ()=> toggleGoal(cb.dataset.goalId, cb.checked));
+  function syncChips(id, val){
+    document.querySelectorAll('#'+id+' .chip').forEach(c=> c.classList.toggle('active', c.dataset.v === String(val)));
+  }
+  function bindChips(id, onPick){
+    document.querySelectorAll('#'+id+' .chip').forEach(chip=>{
+      chip.addEventListener('click', ()=>{ syncChips(id, chip.dataset.v); onPick(chip.dataset.v); });
     });
   }
 
-  // Logging for a date other than today - same active-goals list, just read/written
-  // against whichever date is picked instead of always today. Uses the current
-  // active-goals list regardless of the picked date's age, matching how the
-  // "today" checklist already works (goals aren't date-versioned).
-  function renderBackdateGoalList(){
-    const dateInput = document.getElementById('backdateGoalDate');
-    const wrap = document.getElementById('backdateGoalList');
-    const dateVal = dateInput.value;
-    if(!dateVal){ wrap.innerHTML = ''; return; }
-    if(dateVal > todayKey()){
-      wrap.innerHTML = '<div class="empty-note">Pick today or an earlier date.</div>';
-      return;
-    }
-    const goals = activeGoals();
-    if(!goals.length){
-      wrap.innerHTML = '<div class="empty-note">No active targets to log.</div>';
-      return;
-    }
-    if(!data.goalLogs[dateVal]) data.goalLogs[dateVal] = {};
-    const dayLog = data.goalLogs[dateVal];
-    wrap.innerHTML = goals.map(g=>{
-      const checked = !!dayLog[g.id];
-      return `<label class="goal-item ${checked?'done':''}">
-        <input type="checkbox" data-goal-id="${g.id}" ${checked?'checked':''}>
-        <span class="goal-text">${g.text}</span>
-      </label>`;
-    }).join('');
-    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
-      cb.addEventListener('change', ()=> toggleGoal(cb.dataset.goalId, cb.checked, dateVal));
-    });
+  // Same pattern as Goals had: hidden by default = today; open the form to pick another date.
+  function errEntryDate(){
+    const open = !document.getElementById('errBackdateForm').classList.contains('hidden');
+    return open ? (document.getElementById('errBackdateDate').value || todayKey()) : todayKey();
   }
-  document.getElementById('backdateGoalToggle').addEventListener('click', ()=>{
-    const form = document.getElementById('backdateGoalForm');
+  function renderErrDateLine(){
+    const d = errEntryDate();
+    document.getElementById('errDateLine').textContent = d === todayKey() ? 'Logging for today' : 'Logging for ' + d + ' (backdated)';
+  }
+  document.getElementById('errBackdateToggle').addEventListener('click', ()=>{
+    const form = document.getElementById('errBackdateForm');
     const nowHidden = form.classList.toggle('hidden');
     if(!nowHidden){
-      const dateInput = document.getElementById('backdateGoalDate');
-      if(!dateInput.value){
-        const y = new Date(); y.setDate(y.getDate()-1);
-        dateInput.value = dateKey(y); // default to yesterday - the most likely "I forgot" case
-      }
-      renderBackdateGoalList();
+      const input = document.getElementById('errBackdateDate');
+      if(!input.value){ const y = new Date(); y.setDate(y.getDate()-1); input.value = dateKey(y); }
     }
+    renderErrDateLine();
   });
-  document.getElementById('backdateGoalDate').addEventListener('change', renderBackdateGoalList);
+  document.getElementById('errBackdateDate').addEventListener('change', renderErrDateLine);
 
-  function dayGoalStats(dateKeyStr){
-    const dayLog = data.goalLogs[dateKeyStr];
-    if(!dayLog) return null;
-    const ids = Object.keys(dayLog);
-    if(!ids.length) return null;
-    const done = ids.filter(id=>dayLog[id]).length;
-    return { total: ids.length, done };
+  function renderErrTopicSelect(){
+    const sel = document.getElementById('errTopicSelect');
+    const topics = practiceTopicsFor(errSubject);
+    sel.innerHTML = '<option value="">- pick a topic -</option>' + topics.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    sel.value = errTopicId || '';
+    document.getElementById('errNoTopics').classList.toggle('hidden', topics.length > 0);
   }
-
-  function renderGoalCalDow(){
-    document.getElementById('goalCalDow').innerHTML = DOW.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  function renderErrSubtopicSelect(){
+    const sel = document.getElementById('errSubtopicSelect');
+    const topic = errTopicId ? practiceTopicById(errSubject, errTopicId) : null;
+    sel.innerHTML = '<option value="">- none -</option>' + (topic ? (topic.subtopics||[]) : []).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    sel.value = errSubtopicId || '';
   }
-
-  function renderGoalCalendar(){
-    const grid = document.getElementById('goalCalGrid');
-    grid.innerHTML = '';
-    const label = new Date(goalCalViewYear, goalCalViewMonth, 1).toLocaleDateString(undefined,{month:'long', year:'numeric'});
-    document.getElementById('goalMonthLabel').textContent = label;
-
-    const firstDow = new Date(goalCalViewYear, goalCalViewMonth, 1).getDay();
-    const daysInMonth = new Date(goalCalViewYear, goalCalViewMonth+1, 0).getDate();
-    const tKey = todayKey();
-
-    for(let i=0;i<firstDow;i++){
-      const blank = document.createElement('div');
-      blank.className = 'cal-cell blank';
-      grid.appendChild(blank);
-    }
-    for(let day=1; day<=daysInMonth; day++){
-      const d = new Date(goalCalViewYear, goalCalViewMonth, day);
-      const key = dateKey(d);
-      const stats = dayGoalStats(key);
-      const cell = document.createElement('div');
-      cell.className = 'cal-cell';
-      if(key === tKey) cell.classList.add('today');
-      if(key === goalSelectedDateKey) cell.classList.add('selected');
-
-      if(!stats){ cell.classList.add('has-none'); }
-      else if(stats.done >= stats.total){ cell.classList.add('has-met'); }
-      else { cell.classList.add('has-low'); }
-
-      cell.innerHTML = `<span class="d">${day}</span><span class="dot"></span>`;
-      cell.addEventListener('click', ()=>{ goalSelectedDateKey = key; renderGoalCalendar(); renderGoalDayDetail(); });
-      grid.appendChild(cell);
-    }
-  }
-
-  function renderGoalDayDetail(){
-    const panel = document.getElementById('goalDayDetail');
-    if(!goalSelectedDateKey){ panel.classList.add('hidden'); return; }
-    panel.classList.remove('hidden');
-    const d = new Date(goalSelectedDateKey + 'T00:00:00');
-    const niceDate = d.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric', year:'numeric'});
-    const dayLog = data.goalLogs[goalSelectedDateKey];
-
-    let html = `<h3>${niceDate}</h3>`;
-    if(!dayLog || !Object.keys(dayLog).length){
-      html += '<div class="empty-note">No targets logged this day.</div>';
-    } else {
-      html += Object.keys(dayLog).map(gid=>{
-        const goal = goalById(gid);
-        const text = goal ? goal.text : '(removed target)';
-        const done = dayLog[gid];
-        return `<div class="goal-item ${done?'done':''}" style="cursor:default;">
-          <span style="width:20px; text-align:center; color:${done?'var(--success)':'var(--text-faint)'};">${done?'✓':'✗'}</span>
-          <span class="goal-text">${text}</span>
-        </div>`;
-      }).join('');
-    }
-    panel.innerHTML = html;
-  }
-
-  document.getElementById('goalPrevMonth').addEventListener('click', ()=>{
-    goalCalViewMonth--; if(goalCalViewMonth<0){goalCalViewMonth=11; goalCalViewYear--;}
-    renderGoalCalendar();
+  document.getElementById('errTopicSelect').addEventListener('change', (e)=>{
+    errTopicId = e.target.value || null; errSubtopicId = null; renderErrSubtopicSelect();
   });
-  document.getElementById('goalNextMonth').addEventListener('click', ()=>{
-    goalCalViewMonth++; if(goalCalViewMonth>11){goalCalViewMonth=0; goalCalViewYear++;}
-    renderGoalCalendar();
-  });
+  document.getElementById('errSubtopicSelect').addEventListener('change', (e)=>{ errSubtopicId = e.target.value || null; });
 
-  function makeGoalId(){ return 'goal_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  bindChips('errSubjectChips', v=>{ errSubject = v; errTopicId = null; errSubtopicId = null; renderErrTopicSelect(); renderErrSubtopicSelect(); });
+  bindChips('errTagChips', v=>{ errTag = v; });
+  bindChips('errSummaryRange', v=>{ errRange = v; renderErrorSummary(); });
+  bindChips('errFilterSubject', v=>{ errF.subject = v; renderErrorList(); });
+  bindChips('errFilterTag', v=>{ errF.tag = v; renderErrorList(); });
+  bindChips('errFilterStatus', v=>{ errF.status = v; renderErrorList(); });
 
-  function renderGoalManageLists(){
-    const activeList = document.getElementById('activeGoalsList');
-    const archived = data.goals.filter(g=>g.archived);
-    const archivedWrap = document.getElementById('archivedGoalsWrap');
-    const archivedList = document.getElementById('archivedGoalsList');
-
-    activeList.innerHTML = activeGoals().map(g=>`
-      <div class="goal-manage-row" data-goal-id="${g.id}">
-        <span class="goal-text">${g.text}</span>
-        <button class="edit-goal-btn" data-goal-id="${g.id}">Edit</button>
-        <button class="remove archive-goal-btn" data-goal-id="${g.id}">Remove</button>
-      </div>`).join('') || '<div class="empty-note">No active targets.</div>';
-
-    if(archived.length){
-      archivedWrap.classList.remove('hidden');
-      archivedList.innerHTML = archived.map(g=>`
-        <div class="goal-manage-row" data-goal-id="${g.id}">
-          <span class="goal-text">${g.text}</span>
-          <button class="restore-goal-btn" data-goal-id="${g.id}">Restore</button>
-        </div>`).join('');
-    } else {
-      archivedWrap.classList.add('hidden');
-      archivedList.innerHTML = '';
-    }
-
-    activeList.querySelectorAll('.edit-goal-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> beginEditGoal(btn.dataset.goalId));
+  document.getElementById('errAddBtn').addEventListener('click', ()=>{
+    const date = errEntryDate();
+    if(date > todayKey()){ alert('Pick today or an earlier date.'); return; }
+    if(!errTopicId){ alert('Pick a topic first (topics are managed in the Practice tab).'); return; }
+    if(!errTag){ alert('Pick a tag: Concept, Silly, Time or Selection.'); return; }
+    const whyEl = document.getElementById('errWhyInput'), fixEl = document.getElementById('errFixInput');
+    data.errors.push({
+      id: makeErrorId(), date, subject: errSubject, topicId: errTopicId, subtopicId: errSubtopicId || null,
+      source: document.getElementById('errSourceInput').value.trim(),
+      tag: errTag, why: whyEl.value.trim(), fix: fixEl.value.trim(), resolved: false
     });
-    activeList.querySelectorAll('.archive-goal-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        if(confirm('Remove this target from today\'s checklist? Past history for it is kept.')){
-          const g = goalById(btn.dataset.goalId);
-          if(g){ g.archived = true; saveData(); renderGoalsPage(); }
-        }
-      });
-    });
-    archivedList.querySelectorAll('.restore-goal-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const g = goalById(btn.dataset.goalId);
-        if(g){ g.archived = false; saveData(); renderGoalsPage(); }
-      });
-    });
-  }
-
-  function beginEditGoal(goalId){
-    const row = document.querySelector(`#activeGoalsList .goal-manage-row[data-goal-id="${goalId}"]`);
-    if(!row) return;
-    const goal = goalById(goalId);
-    row.innerHTML = `
-      <input type="text" class="goal-edit-input" value="${goal.text.replace(/"/g,'&quot;')}">
-      <button class="save-goal-btn">Save</button>
-      <button class="cancel-goal-btn">Cancel</button>`;
-    const input = row.querySelector('.goal-edit-input');
-    input.focus();
-    row.querySelector('.save-goal-btn').addEventListener('click', ()=>{
-      const newText = input.value.trim();
-      if(!newText){ alert('Target text cannot be empty.'); return; }
-      goal.text = newText;
-      saveData();
-      renderGoalsPage();
-    });
-    row.querySelector('.cancel-goal-btn').addEventListener('click', ()=> renderGoalManageLists());
-  }
-
-  document.getElementById('addGoalBtn').addEventListener('click', ()=>{
-    const input = document.getElementById('newGoalInput');
-    const text = input.value.trim();
-    if(!text){ alert('Type a target before adding it.'); return; }
-    data.goals.push({ id: makeGoalId(), text, archived:false });
     saveData();
-    input.value = '';
-    renderGoalsPage();
+    whyEl.value = ''; fixEl.value = ''; errTag = null;
+    // deliberately kept: source, subject, topic, sub-topic and date - logging several
+    // errors from the same test in a row is the common case
+    renderErrorsPage();
   });
 
-  function renderGoalsPage(){
-    renderTodayGoals();
-    renderGoalCalendar();
-    renderGoalDayDetail();
-    renderGoalManageLists();
+  function renderErrorSummary(){
+    let list = data.errors;
+    if(errRange === '7'){
+      const c = new Date(); c.setDate(c.getDate()-6);
+      const cutoff = dateKey(c);
+      list = list.filter(e => e.date >= cutoff);
+    }
+    const n = (t, s) => list.filter(e => (!t || e.tag===t) && (!s || e.subject===s)).length;
+    const rows = ERROR_TAGS.map(t =>
+      `<tr><td>${t}</td>${SUBJECTS.map(s=>`<td class="score-cell">${n(t,s)}</td>`).join('')}<td class="score-cell">${n(t,null)}</td></tr>`).join('');
+    const total = `<tr><td><b>Total</b></td>${SUBJECTS.map(s=>`<td class="score-cell">${n(null,s)}</td>`).join('')}<td class="score-cell">${list.length}</td></tr>`;
+    document.getElementById('errSummaryTable').innerHTML =
+      `<table style="min-width:0;"><thead><tr><th>Tag</th>${SUBJECTS.map(s=>`<th>${s}</th>`).join('')}<th>Total</th></tr></thead><tbody>${rows}${total}</tbody></table>`;
+    const open = data.errors.filter(e=>!e.resolved).length;
+    document.getElementById('errUnresolvedLine').textContent = `${open} unresolved overall (all time).`;
+  }
+
+  function renderErrorList(){
+    let list = data.errors.slice().reverse().sort((a,b)=> b.date.localeCompare(a.date));
+    if(errF.subject !== 'All') list = list.filter(e=>e.subject===errF.subject);
+    if(errF.tag !== 'All') list = list.filter(e=>e.tag===errF.tag);
+    if(errF.status === 'Unresolved') list = list.filter(e=>!e.resolved);
+    if(errF.status === 'Resolved') list = list.filter(e=>e.resolved);
+    document.getElementById('errCountLine').textContent =
+      `${list.length} shown` + (errF.status==='Unresolved' ? ' - re-attempt these, tick Resolved after getting each right twice' : '');
+    const wrap = document.getElementById('errList');
+    if(!list.length){ wrap.innerHTML = '<div class="empty-note">Nothing matches these filters.</div>'; return; }
+    wrap.innerHTML = list.map(e=>{
+      const topic = practiceTopicById(e.subject, e.topicId);
+      const sub = topic && e.subtopicId ? (topic.subtopics||[]).find(s=>s.id===e.subtopicId) : null;
+      const label = (topic ? topic.name : '(deleted topic)') + (sub ? ' · ' + sub.name : '');
+      const nice = new Date(e.date+'T00:00:00').toLocaleDateString(undefined,{day:'numeric', month:'short'});
+      return `<div class="err-card ${e.resolved?'resolved':''}">
+        <div class="err-top">
+          <span class="err-date">${nice}</span>
+          <span class="sec-tag ${e.subject}">${e.subject}</span>
+          <span class="err-tag ${e.tag}">${e.tag}</span>
+          <span class="err-topic">${esc(label)}</span>
+        </div>
+        ${e.source ? `<div class="err-line">${esc(e.source)}</div>` : ''}
+        ${e.why ? `<div class="err-line"><b>Why:</b> ${esc(e.why)}</div>` : ''}
+        ${e.fix ? `<div class="err-line"><b>Fix:</b> ${esc(e.fix)}</div>` : ''}
+        <div class="err-actions">
+          <label><input type="checkbox" class="err-resolve" data-id="${e.id}" ${e.resolved?'checked':''}> Resolved (re-attempted correctly twice)</label>
+          <button class="del-btn err-del" data-id="${e.id}" aria-label="Delete error">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.err-resolve').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        const e = data.errors.find(x=>x.id===cb.dataset.id);
+        if(e){ e.resolved = cb.checked; saveData(); renderErrorsPage(); }
+      });
+    });
+    wrap.querySelectorAll('.err-del').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(!confirm('Delete this error?')) return;
+        data.errors = data.errors.filter(x=>x.id!==btn.dataset.id);
+        saveData(); renderErrorsPage();
+      });
+    });
+  }
+
+  function renderErrorsPage(){
+    // Re-validate selection every render: a sync pull / import / restore can replace
+    // the Practice topics out from under an in-progress selection.
+    if(errTopicId && !practiceTopicById(errSubject, errTopicId)){ errTopicId = null; errSubtopicId = null; }
+    if(errSubtopicId){
+      const t = errTopicId ? practiceTopicById(errSubject, errTopicId) : null;
+      if(!t || !(t.subtopics||[]).some(s=>s.id===errSubtopicId)) errSubtopicId = null;
+    }
+    syncChips('errSubjectChips', errSubject);
+    syncChips('errTagChips', errTag);
+    renderErrDateLine();
+    renderErrTopicSelect();
+    renderErrSubtopicSelect();
+    renderErrorSummary();
+    renderErrorList();
   }
 
   // ---------- Practice log: subject > topic > sub-topic, question counts ----------
@@ -2840,10 +2798,7 @@
   document.getElementById('testDate').value = todayKey();
   renderTestsPage();
 
-  goalCalViewYear = now.getFullYear();
-  goalCalViewMonth = now.getMonth();
-  renderGoalCalDow();
-  renderGoalsPage(); // always safe now - nothing automatic ever touches the network on load
+  renderErrorsPage();
   renderPracticePage();
 
   // Just show whether a Sync ID is already saved on this device. No network call happens
