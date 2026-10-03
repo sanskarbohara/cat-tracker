@@ -255,6 +255,16 @@
   .err-actions{display:flex; justify-content:space-between; align-items:center; margin-top:8px;}
   .err-actions label{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); cursor:pointer;}
   .err-actions input{width:18px; height:18px; accent-color:var(--success);}
+  .err-sum{font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0 0 8px;}
+  .err-sum b{color:var(--text);}
+  .err-rule{width:100%; box-sizing:border-box; background:var(--surface); border:1px solid var(--surface-2); color:var(--text); padding:9px 10px; border-radius:8px; font-size:13px; font-family:inherit; margin:4px 0 10px;}
+  .err-rule:focus{border-color:var(--accent); outline:none;}
+  .err-row{background:var(--surface-2); border-radius:8px; margin-bottom:6px;}
+  .err-row.resolved{opacity:.6;}
+  .err-row-head{width:100%; display:flex; align-items:center; gap:8px; background:none; border:none; padding:10px 12px; cursor:pointer; text-align:left; font-family:inherit; color:var(--text); font-size:13px;}
+  .err-row-head .t{flex:1; min-width:0;}
+  .err-row-head .t small{display:block; color:var(--text-faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .err-row-body{padding:0 12px 10px;}
   .filter-label{font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin:0 0 5px;}
 
   /* ---------- Hero ---------- */
@@ -645,23 +655,12 @@
   </section>
 
   <section>
-    <h2>Tag summary</h2>
-    <div class="filter-chips" id="errSummaryRange">
-      <button type="button" class="chip active" data-v="7">Last 7 days</button>
-      <button type="button" class="chip" data-v="all">All time</button>
-    </div>
-    <div class="table-wrap" id="errSummaryTable"></div>
-    <div class="empty-note" id="errUnresolvedLine"></div>
-  </section>
-
-  <section>
-    <h2>Errors</h2>
-    <div class="filter-label">Subject</div>
-    <div class="filter-chips" id="errFilterSubject">
-      <button type="button" class="chip active" data-v="All">All</button>
-      <button type="button" class="chip" data-v="VARC">VARC</button>
-      <button type="button" class="chip" data-v="Quant">Quant</button>
-      <button type="button" class="chip" data-v="LRDI">LRDI</button>
+    <h2>Mistakes by subject</h2>
+    <div class="filter-label">Status</div>
+    <div class="filter-chips" id="errFilterStatus">
+      <button type="button" class="chip" data-v="All">All</button>
+      <button type="button" class="chip active" data-v="Unresolved">Unresolved</button>
+      <button type="button" class="chip" data-v="Resolved">Resolved</button>
     </div>
     <div class="filter-label">Tag</div>
     <div class="filter-chips" id="errFilterTag">
@@ -671,14 +670,7 @@
       <button type="button" class="chip" data-v="Time">Time</button>
       <button type="button" class="chip" data-v="Selection">Selection</button>
     </div>
-    <div class="filter-label">Status (Unresolved = this week's re-attempt list)</div>
-    <div class="filter-chips" id="errFilterStatus">
-      <button type="button" class="chip active" data-v="All">All</button>
-      <button type="button" class="chip" data-v="Unresolved">Unresolved</button>
-      <button type="button" class="chip" data-v="Resolved">Resolved</button>
-    </div>
-    <div class="goal-progress" id="errCountLine"></div>
-    <div id="errList"></div>
+    <div id="errSubjects"></div>
   </section>
 
   </div><!-- /page-errors -->
@@ -2207,7 +2199,9 @@
   // ---------- Errors log ----------
   const SUBJECTS = ['VARC','Quant','LRDI'];
   let errSubject = 'VARC', errTopicId = null, errSubtopicId = null, errTag = null;
-  let errF = { subject:'All', tag:'All', status:'All' };
+  let errF = { subject:'All', tag:'All', status:'Unresolved' };
+  let errOpenSubject = null;
+  const errOpenRows = new Set();
   let errRange = '7';
 
   function esc(s){
@@ -2264,8 +2258,6 @@
 
   bindChips('errSubjectChips', v=>{ errSubject = v; errTopicId = null; errSubtopicId = null; renderErrTopicSelect(); renderErrSubtopicSelect(); });
   bindChips('errTagChips', v=>{ errTag = v; });
-  bindChips('errSummaryRange', v=>{ errRange = v; renderErrorSummary(); });
-  bindChips('errFilterSubject', v=>{ errF.subject = v; renderErrorList(); });
   bindChips('errFilterTag', v=>{ errF.tag = v; renderErrorList(); });
   bindChips('errFilterStatus', v=>{ errF.status = v; renderErrorList(); });
 
@@ -2287,54 +2279,92 @@
     renderErrorsPage();
   });
 
-  function renderErrorSummary(){
-    let list = data.errors;
-    if(errRange === '7'){
-      const c = new Date(); c.setDate(c.getDate()-6);
-      const cutoff = dateKey(c);
-      list = list.filter(e => e.date >= cutoff);
-    }
-    const n = (t, s) => list.filter(e => (!t || e.tag===t) && (!s || e.subject===s)).length;
-    const rows = ERROR_TAGS.map(t =>
-      `<tr><td>${t}</td>${SUBJECTS.map(s=>`<td class="score-cell">${n(t,s)}</td>`).join('')}<td class="score-cell">${n(t,null)}</td></tr>`).join('');
-    const total = `<tr><td><b>Total</b></td>${SUBJECTS.map(s=>`<td class="score-cell">${n(null,s)}</td>`).join('')}<td class="score-cell">${list.length}</td></tr>`;
-    document.getElementById('errSummaryTable').innerHTML =
-      `<table style="min-width:0;"><thead><tr><th>Tag</th>${SUBJECTS.map(s=>`<th>${s}</th>`).join('')}<th>Total</th></tr></thead><tbody>${rows}${total}</tbody></table>`;
-    const open = data.errors.filter(e=>!e.resolved).length;
-    document.getElementById('errUnresolvedLine').textContent = `${open} unresolved overall (all time).`;
+  function renderErrorSummary(){ /* merged into renderErrorList (per-subject cards) */ }
+
+  function errLabel(e){
+    const topic = practiceTopicById(e.subject, e.topicId);
+    const sub = topic && e.subtopicId ? (topic.subtopics||[]).find(x=>x.id===e.subtopicId) : null;
+    return (topic ? topic.name : '(deleted topic)') + (sub ? ' · ' + sub.name : '');
   }
 
   function renderErrorList(){
-    let list = data.errors.slice().reverse().sort((a,b)=> b.date.localeCompare(a.date));
-    if(errF.subject !== 'All') list = list.filter(e=>e.subject===errF.subject);
-    if(errF.tag !== 'All') list = list.filter(e=>e.tag===errF.tag);
-    if(errF.status === 'Unresolved') list = list.filter(e=>!e.resolved);
-    if(errF.status === 'Resolved') list = list.filter(e=>e.resolved);
-    document.getElementById('errCountLine').textContent =
-      `${list.length} shown` + (errF.status==='Unresolved' ? ' - re-attempt these, tick Resolved after getting each right twice' : '');
-    const wrap = document.getElementById('errList');
-    if(!list.length){ wrap.innerHTML = '<div class="empty-note">Nothing matches these filters.</div>'; return; }
-    wrap.innerHTML = list.map(e=>{
-      const topic = practiceTopicById(e.subject, e.topicId);
-      const sub = topic && e.subtopicId ? (topic.subtopics||[]).find(s=>s.id===e.subtopicId) : null;
-      const label = (topic ? topic.name : '(deleted topic)') + (sub ? ' · ' + sub.name : '');
-      const nice = new Date(e.date+'T00:00:00').toLocaleDateString(undefined,{day:'numeric', month:'short'});
-      return `<div class="err-card ${e.resolved?'resolved':''}">
-        <div class="err-top">
-          <span class="err-date">${nice}</span>
-          <span class="sec-tag ${e.subject}">${e.subject}</span>
-          <span class="err-tag ${e.tag}">${e.tag}</span>
-          <span class="err-topic">${esc(label)}</span>
-        </div>
-        ${e.source ? `<div class="err-line">${esc(e.source)}</div>` : ''}
-        ${e.why ? `<div class="err-line"><b>Why:</b> ${esc(e.why)}</div>` : ''}
-        ${e.fix ? `<div class="err-line"><b>Fix:</b> ${esc(e.fix)}</div>` : ''}
-        <div class="err-actions">
-          <label><input type="checkbox" class="err-resolve" data-id="${e.id}" ${e.resolved?'checked':''}> Resolved (re-attempted correctly twice)</label>
-          <button class="del-btn err-del" data-id="${e.id}" aria-label="Delete error">✕</button>
-        </div>
+    if(!data.settings.errRules || typeof data.settings.errRules !== 'object') data.settings.errRules = {};
+    const wrap = document.getElementById('errSubjects');
+    wrap.innerHTML = SUBJECTS.map(sj=>{
+      const all = data.errors.filter(e=>e.subject===sj);
+      const open = all.filter(e=>!e.resolved);
+      const isOpen = errOpenSubject === sj;
+      let body = '';
+      if(isOpen){
+        const byTopic = {};
+        open.forEach(e=>{ const k = errLabel(e); byTopic[k] = (byTopic[k]||0) + 1; });
+        const topTopics = Object.entries(byTopic).sort((x,y)=>y[1]-x[1]).slice(0,4)
+          .map(([k,v])=>`${esc(k)} (${v})`).join(', ') || 'nothing open';
+        const byTag = ERROR_TAGS.map(t=>[t, open.filter(e=>e.tag===t).length]).filter(x=>x[1])
+          .map(x=>`${x[0]} ${x[1]}`).join(', ') || 'none';
+        let list = all.slice();
+        if(errF.tag !== 'All') list = list.filter(e=>e.tag===errF.tag);
+        if(errF.status === 'Unresolved') list = list.filter(e=>!e.resolved);
+        if(errF.status === 'Resolved') list = list.filter(e=>e.resolved);
+        list.sort((x,y)=> errLabel(x).localeCompare(errLabel(y)) || y.date.localeCompare(x.date));
+        const rows = list.length ? list.map(e=>{
+          const rowOpen = errOpenRows.has(e.id);
+          const nice = new Date(e.date+'T00:00:00').toLocaleDateString(undefined,{day:'numeric', month:'short'});
+          const head = e.fix || e.why || e.source || '';
+          return `<div class="err-row ${e.resolved?'resolved':''}">
+            <button type="button" class="err-row-head" data-id="${e.id}" aria-expanded="${rowOpen}">
+              <span class="err-tag ${e.tag}">${e.tag}</span>
+              <span class="t">${esc(errLabel(e))}<small>${esc(head)}</small></span>
+              <span class="coverage-caret">${rowOpen ? '▾' : '▸'}</span>
+            </button>
+            ${rowOpen ? `<div class="err-row-body">
+              <div class="err-line">${nice}${e.source ? ' · ' + esc(e.source) : ''}</div>
+              ${e.why ? `<div class="err-line"><b>Why:</b> ${esc(e.why)}</div>` : ''}
+              ${e.fix ? `<div class="err-line"><b>Fix:</b> ${esc(e.fix)}</div>` : ''}
+              <div class="err-actions">
+                <label><input type="checkbox" class="err-resolve" data-id="${e.id}" ${e.resolved?'checked':''}> Resolved (got it right cold)</label>
+                <button class="del-btn err-del" data-id="${e.id}" aria-label="Delete error">✕</button>
+              </div>
+            </div>` : ''}
+          </div>`;
+        }).join('') : '<div class="empty-note">Nothing matches these filters.</div>';
+        body = `<div class="coverage-subject-body">
+          <div class="filter-label">The rule I keep breaking (edit it)</div>
+          <input type="text" class="err-rule" data-s="${sj}" value="${esc(data.settings.errRules[sj]||'')}" placeholder="One line, e.g. solve the condition as an inequality, never test numbers">
+          <div class="err-sum"><b>Most open:</b> ${topTopics}</div>
+          <div class="err-sum"><b>By type:</b> ${byTag}</div>
+          <div class="goal-progress">${list.length} shown</div>
+          ${rows}
+        </div>`;
+      }
+      return `<div style="margin-top:10px;">
+        <button type="button" class="coverage-subject-header err-subj" data-s="${sj}" aria-expanded="${isOpen}">
+          <span class="sec-tag ${sj}">${sj}</span>
+          <span class="coverage-summary">${open.length} open · ${all.length - open.length} fixed</span>
+          <span class="coverage-caret">${isOpen ? '▾' : '▸'}</span>
+        </button>${body}
       </div>`;
     }).join('');
+
+    wrap.querySelectorAll('.err-subj').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        errOpenSubject = (errOpenSubject === btn.dataset.s) ? null : btn.dataset.s;
+        renderErrorList();
+      });
+    });
+    wrap.querySelectorAll('.err-rule').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        data.settings.errRules[inp.dataset.s] = inp.value.trim();
+        saveData();
+      });
+    });
+    wrap.querySelectorAll('.err-row-head').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id = btn.dataset.id;
+        if(errOpenRows.has(id)) errOpenRows.delete(id); else errOpenRows.add(id);
+        renderErrorList();
+      });
+    });
     wrap.querySelectorAll('.err-resolve').forEach(cb=>{
       cb.addEventListener('change', ()=>{
         const e = data.errors.find(x=>x.id===cb.dataset.id);
@@ -2345,6 +2375,7 @@
       btn.addEventListener('click', ()=>{
         if(!confirm('Delete this error?')) return;
         data.errors = data.errors.filter(x=>x.id!==btn.dataset.id);
+        errOpenRows.delete(btn.dataset.id);
         saveData(); renderErrorsPage();
       });
     });
